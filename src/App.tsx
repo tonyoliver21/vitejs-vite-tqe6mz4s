@@ -46,58 +46,50 @@ async function sbDelete(table, filter) {
 // WEEK OPTIONS — every Monday Jan–Dec 2026
 // ─────────────────────────────────────────────────────────────────────────────
 function generateWeeks() {
-  const weeks = [{ label: "Available Now", value: "now" }];
-  const start = new Date("2026-01-05"); // first Monday of 2026
-  const end   = new Date("2026-12-28");
-  const cur   = new Date(start);
+  const weeks = [{ label:"Available Now", value:"now" }];
+  const cur = new Date("2026-01-05");
+  const end = new Date("2026-12-28");
   while (cur <= end) {
-    const d   = cur.toISOString().split("T")[0];
-    const day = cur.getDate();
-    const mon = cur.toLocaleString("en-GB", { month: "short" });
-    weeks.push({ label: `w/c ${day} ${mon} '26`, value: d });
+    const d = cur.toISOString().split("T")[0];
+    weeks.push({ label:`w/c ${cur.getDate()} ${cur.toLocaleString("en-GB",{month:"short"})} '26`, value:d });
     cur.setDate(cur.getDate() + 7);
   }
   return weeks;
 }
 const WEEK_OPTIONS = generateWeeks();
 
-// Given a startDate value and a planning period (workingDays), return the
-// fraction of that period the person is available (0–1).
 function availabilityFraction(startDate, periodWorkingDays) {
   if (!startDate || startDate === "now") return 1;
   const today = new Date();
   const start = new Date(startDate);
   if (start <= today) return 1;
-  // Estimate working days from today to start of planning period
-  // Simple approximation: days until start / (periodWorkingDays) capped at 0–1
-  const msPerDay = 1000 * 60 * 60 * 24;
-  const calDaysUntilStart = Math.max(0, (start - today) / msPerDay);
-  // Convert to working days (approx 5/7)
-  const wdUntilStart = calDaysUntilStart * (5 / 7);
-  const fraction = Math.max(0, Math.min(1, (periodWorkingDays - wdUntilStart) / periodWorkingDays));
-  return fraction;
+  const calDays = Math.max(0, (start - today) / (1000*60*60*24));
+  const wdUntilStart = calDays * (5/7);
+  return Math.max(0, Math.min(1, (periodWorkingDays - wdUntilStart) / periodWorkingDays));
 }
 
-// Human-readable label for start date
 function startLabel(val) {
   if (!val || val === "now") return "Now";
   const opt = WEEK_OPTIONS.find(w => w.value === val);
   return opt ? opt.label : val;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// FORECAST DATA
+// ─────────────────────────────────────────────────────────────────────────────
 const FORECAST_MONTHS = [
-  { month:"Jan", fteAssets:6000,  flAssets:1200, ldb:3865,  ppd:3097,  lld:3481,  gt:10443, forecastProjects:162, permPM:155, flyPM:0,  ldbProj:54,  ppdProj:50,  lldProj:58  },
-  { month:"Feb", fteAssets:3825,  flAssets:4800, ldb:1953,  ppd:1695,  lld:3306,  gt:6954,  forecastProjects:85,  permPM:133, flyPM:30, ldbProj:23,  ppdProj:20,  lldProj:42  },
-  { month:"Mar", fteAssets:8475,  flAssets:9000, ldb:2548,  ppd:2357,  lld:5348,  gt:10253, forecastProjects:272, permPM:272, flyPM:76, ldbProj:67,  ppdProj:62,  lldProj:143 },
-  { month:"Apr", fteAssets:16860, flAssets:4500, ldb:2855,  ppd:2742,  lld:11230, gt:16827, forecastProjects:391, permPM:412, flyPM:95, ldbProj:66,  ppdProj:64,  lldProj:261 },
-  { month:"May", fteAssets:22800, flAssets:0,    ldb:2688,  ppd:2796,  lld:11492, gt:16976, forecastProjects:395, permPM:497, flyPM:0,  ldbProj:62,  ppdProj:65,  lldProj:268 },
-  { month:"Jun", fteAssets:29498, flAssets:3000, ldb:4257,  ppd:4267,  lld:16748, gt:25272, forecastProjects:588, permPM:608, flyPM:90, ldbProj:99,  ppdProj:99,  lldProj:390 },
-  { month:"Jul", fteAssets:23598, flAssets:2400, ldb:4334,  ppd:4237,  lld:15737, gt:24308, forecastProjects:565, permPM:608, flyPM:75, ldbProj:101, ppdProj:99,  lldProj:365 },
-  { month:"Aug", fteAssets:5900,  flAssets:600,  ldb:724,   ppd:777,   lld:3223,  gt:4724,  forecastProjects:140, permPM:608, flyPM:0,  ldbProj:21,  ppdProj:23,  lldProj:96  },
-  { month:"Sep", fteAssets:18334, flAssets:0,    ldb:3326,  ppd:3234,  lld:11774, gt:18334, forecastProjects:420, permPM:608, flyPM:0,  ldbProj:76,  ppdProj:74,  lldProj:270 },
-  { month:"Oct", fteAssets:22455, flAssets:0,    ldb:4034,  ppd:3950,  lld:14471, gt:22455, forecastProjects:480, permPM:608, flyPM:0,  ldbProj:86,  ppdProj:84,  lldProj:310 },
-  { month:"Nov", fteAssets:16844, flAssets:0,    ldb:2993,  ppd:2949,  lld:10902, gt:16844, forecastProjects:380, permPM:608, flyPM:0,  ldbProj:67,  ppdProj:66,  lldProj:247 },
-  { month:"Dec", fteAssets:12872, flAssets:0,    ldb:2285,  ppd:2251,  lld:8336,  gt:12872, forecastProjects:290, permPM:608, flyPM:0,  ldbProj:51,  ppdProj:50,  lldProj:189 },
+  { month:"Jan", ldb:3865,  ppd:3097,  lld:3481,  gt:10443, forecastProjects:162, permPM:155, flyPM:0,  ldbProj:54,  ppdProj:50,  lldProj:58  },
+  { month:"Feb", ldb:1953,  ppd:1695,  lld:3306,  gt:6954,  forecastProjects:85,  permPM:133, flyPM:30, ldbProj:23,  ppdProj:20,  lldProj:42  },
+  { month:"Mar", ldb:2548,  ppd:2357,  lld:5348,  gt:10253, forecastProjects:272, permPM:272, flyPM:76, ldbProj:67,  ppdProj:62,  lldProj:143 },
+  { month:"Apr", ldb:2855,  ppd:2742,  lld:11230, gt:16827, forecastProjects:391, permPM:412, flyPM:95, ldbProj:66,  ppdProj:64,  lldProj:261 },
+  { month:"May", ldb:2688,  ppd:2796,  lld:11492, gt:16976, forecastProjects:395, permPM:497, flyPM:0,  ldbProj:62,  ppdProj:65,  lldProj:268 },
+  { month:"Jun", ldb:4257,  ppd:4267,  lld:16748, gt:25272, forecastProjects:588, permPM:608, flyPM:90, ldbProj:99,  ppdProj:99,  lldProj:390 },
+  { month:"Jul", ldb:4334,  ppd:4237,  lld:15737, gt:24308, forecastProjects:565, permPM:608, flyPM:75, ldbProj:101, ppdProj:99,  lldProj:365 },
+  { month:"Aug", ldb:724,   ppd:777,   lld:3223,  gt:4724,  forecastProjects:140, permPM:608, flyPM:0,  ldbProj:21,  ppdProj:23,  lldProj:96  },
+  { month:"Sep", ldb:3326,  ppd:3234,  lld:11774, gt:18334, forecastProjects:420, permPM:608, flyPM:0,  ldbProj:76,  ppdProj:74,  lldProj:270 },
+  { month:"Oct", ldb:4034,  ppd:3950,  lld:14471, gt:22455, forecastProjects:480, permPM:608, flyPM:0,  ldbProj:86,  ppdProj:84,  lldProj:310 },
+  { month:"Nov", ldb:2993,  ppd:2949,  lld:10902, gt:16844, forecastProjects:380, permPM:608, flyPM:0,  ldbProj:67,  ppdProj:66,  lldProj:247 },
+  { month:"Dec", ldb:2285,  ppd:2251,  lld:8336,  gt:12872, forecastProjects:290, permPM:608, flyPM:0,  ldbProj:51,  ppdProj:50,  lldProj:189 },
 ];
 
 const PM_BY_DIV = { LDB:7, PPD:8, LLD:22 };
@@ -308,7 +300,7 @@ export default function App(){
   const [prevMonths,    setPrevMonths]    = useState(1);
   const [forecastDiv,   setForecastDiv]   = useState("Total");
   const [projView,      setProjView]      = useState("Total");
-  const [actuals,       setActuals]       = useState(FORECAST_MONTHS.map(m=>({month:m.month,actualAssets:0,actualProjects:0,actualLdb:0,actualPpd:0,actualLld:0})));
+  const [actuals,       setActuals]       = useState(FORECAST_MONTHS.map(m=>({month:m.month,actualAssets:0,actualLdb:0,actualPpd:0,actualLld:0})));
 
   const period=PERIODS[periodIdx], WD=period.workingDays;
   const updateDivAsset=(div,field,value)=>setDivAsset(prev=>({...prev,[div]:{...prev[div],[field]:value}}));
@@ -319,14 +311,21 @@ export default function App(){
     (async()=>{
       setDbStatus("loading");
       try{
-        const{data:rData}=await sbSelect("roster"); if(rData&&rData.length>0)setRoster(rData.map(p=>({...p,startDate:p.startDate||"now"})));else await sbUpsert("roster",DEFAULT_ROSTER);
-        const{data:mData}=await sbSelect("project_mix"); if(mData&&mData.length>0)setMix(mData);else await sbUpsert("project_mix",DEFAULT_MIX);
-        const{data:sData}=await sbSelect("sla_overrides"); if(sData&&sData.length>0){const ov={};sData.forEach(r=>{if(!ov[r.pt_id])ov[r.pt_id]={};ov[r.pt_id][r.stage_key]=r.days;});setSlaOv(ov);}
+        const{data:rData}=await sbSelect("roster");
+        if(rData&&rData.length>0) setRoster(rData.map(p=>({...p,startDate:p.startDate||"now"})));
+        else await sbUpsert("roster",DEFAULT_ROSTER);
+        const{data:mData}=await sbSelect("project_mix");
+        if(mData&&mData.length>0) setMix(mData); else await sbUpsert("project_mix",DEFAULT_MIX);
+        const{data:sData}=await sbSelect("sla_overrides");
+        if(sData&&sData.length>0){const ov={};sData.forEach(r=>{if(!ov[r.pt_id])ov[r.pt_id]={};ov[r.pt_id][r.stage_key]=r.days;});setSlaOv(ov);}
         const{data:stData}=await sbSelect("settings");
         if(stData&&stData.length>0){stData.forEach(s=>{
-          if(s.key==="utilPM")setUtilPM(+s.value);if(s.key==="utilDes")setUtilDes(+s.value);
-          if(s.key==="periodIdx")setPeriodIdx(+s.value);if(s.key==="complexity")setComplexity(s.value);
-          if(s.key==="eanBand")setEanBand(s.value);if(s.key==="syndCplx")setSyndCplx(s.value);
+          if(s.key==="utilPM")setUtilPM(+s.value);
+          if(s.key==="utilDes")setUtilDes(+s.value);
+          if(s.key==="periodIdx")setPeriodIdx(+s.value);
+          if(s.key==="complexity")setComplexity(s.value);
+          if(s.key==="eanBand")setEanBand(s.value);
+          if(s.key==="syndCplx")setSyndCplx(s.value);
           if(s.key==="clientDays")setClientDays(s.value==="true");
           if(s.key==="projectsPerPM")setProjectsPerPM(+s.value);
         });}
@@ -335,7 +334,10 @@ export default function App(){
     })();
   },[]);
 
-  const saveSettings=useCallback(async updates=>{if(!hasSupabase)return;await sbUpsert("settings",Object.entries(updates).map(([key,value])=>({key,value:String(value)})));},[]);
+  const saveSettings=useCallback(async updates=>{
+    if(!hasSupabase)return;
+    await sbUpsert("settings",Object.entries(updates).map(([key,value])=>({key,value:String(value)})));
+  },[]);
 
   useMemo(()=>{
     if(period.months!==prevMonths){
@@ -361,53 +363,80 @@ export default function App(){
   const resetOv=async id=>{setSlaOv(prev=>{const n={...prev};delete n[id];return n;});if(hasSupabase){setSaving(true);await sbDelete("sla_overrides",`pt_id=eq.${id}`);setSaving(false);}};
   const hasOv=id=>!!slaOv[id]&&Object.keys(slaOv[id]).length>0;
 
-  // ── Capacity roster — accounts for start date weighting ──────────────────
   const capacityRoster=useMemo(()=>roster.filter(p=>!p.removed&&p.status==="Active"),[roster]);
 
-  // Effective headcount per pool per division, weighted by availability fraction
+  // ─────────────────────────────────────────────────────────────────────────
+  // POOLS BY DIVISION
+  // Each person's contribution is weighted by their availability fraction.
+  // Raw headcount (fte/fl/total) for display; efte for capacity calculations.
+  // FIX: "All" entry carries ALL weighted fields so downstream never gets NaN.
+  // ─────────────────────────────────────────────────────────────────────────
   const poolsByDiv=useMemo(()=>{
     const res={};
     DIVS.forEach(div=>{
-      // FTE PM
-      const pmFTE = capacityRoster.filter(p=>p.role==="Project Manager"&&p.type==="FTE"&&p.division===div)
-        .reduce((s,p)=>s+availabilityFraction(p.startDate,WD),0);
-      const pmFL  = capacityRoster.filter(p=>p.role==="Project Manager"&&p.type==="Freelance"&&p.division===div)
-        .reduce((s,p)=>s+availabilityFraction(p.startDate,WD),0);
-      const desFTE= capacityRoster.filter(p=>p.role==="Integrated Designer"&&p.type==="FTE"&&p.division===div)
-        .reduce((s,p)=>s+availabilityFraction(p.startDate,WD),0);
-      const desFL = capacityRoster.filter(p=>p.role==="Integrated Designer"&&p.type==="Freelance"&&p.division===div)
-        .reduce((s,p)=>s+availabilityFraction(p.startDate,WD),0);
-      // Headcount totals (unweighted, for display)
-      const pmFTEc  = capacityRoster.filter(p=>p.role==="Project Manager"&&p.type==="FTE"&&p.division===div).length;
-      const pmFLc   = capacityRoster.filter(p=>p.role==="Project Manager"&&p.type==="Freelance"&&p.division===div).length;
-      const desFTEc = capacityRoster.filter(p=>p.role==="Integrated Designer"&&p.type==="FTE"&&p.division===div).length;
-      const desFLc  = capacityRoster.filter(p=>p.role==="Integrated Designer"&&p.type==="Freelance"&&p.division===div).length;
+      const isPM   = p=>p.role==="Project Manager";
+      const isDes  = p=>p.role==="Integrated Designer";
+      const isFTE  = p=>p.type==="FTE";
+      const isFL   = p=>p.type==="Freelance";
+      const inDiv  = p=>p.division===div;
+
+      const pmFTElist  = capacityRoster.filter(p=>isPM(p)&&isFTE(p)&&inDiv(p));
+      const pmFLlist   = capacityRoster.filter(p=>isPM(p)&&isFL(p)&&inDiv(p));
+      const desFTElist = capacityRoster.filter(p=>isDes(p)&&isFTE(p)&&inDiv(p));
+      const desFLlist  = capacityRoster.filter(p=>isDes(p)&&isFL(p)&&inDiv(p));
+
+      const sum = (arr) => arr.reduce((s,p)=>s+availabilityFraction(p.startDate,WD),0);
+
       res[div]={
-        pm:  {fte:pmFTEc,  fl:pmFLc,  total:pmFTEc+pmFLc,   efteFTE:pmFTE,  efteFL:pmFL,  efte:pmFTE+pmFL  },
-        des: {fte:desFTEc, fl:desFLc, total:desFTEc+desFLc, efteFTE:desFTE, efteFL:desFL, efte:desFTE+desFL},
+        pm:{
+          fte:   pmFTElist.length,
+          fl:    pmFLlist.length,
+          total: pmFTElist.length + pmFLlist.length,
+          efteFTE: sum(pmFTElist),
+          efteFL:  sum(pmFLlist),
+          efte:    sum(pmFTElist) + sum(pmFLlist),
+        },
+        des:{
+          fte:   desFTElist.length,
+          fl:    desFLlist.length,
+          total: desFTElist.length + desFLlist.length,
+          efteFTE: sum(desFTElist),
+          efteFL:  sum(desFLlist),
+          efte:    sum(desFTElist) + sum(desFLlist),
+        },
       };
     });
+
+    // "All" — aggregate every field explicitly so nothing is undefined
     res["All"]={
       pm:{
-        fte:DIVS.reduce((s,d)=>s+res[d].pm.fte,0),fl:DIVS.reduce((s,d)=>s+res[d].pm.fl,0),total:DIVS.reduce((s,d)=>s+res[d].pm.total,0),
-        efte:DIVS.reduce((s,d)=>s+res[d].pm.efte,0),
+        fte:     DIVS.reduce((s,d)=>s+res[d].pm.fte,0),
+        fl:      DIVS.reduce((s,d)=>s+res[d].pm.fl,0),
+        total:   DIVS.reduce((s,d)=>s+res[d].pm.total,0),
+        efteFTE: DIVS.reduce((s,d)=>s+res[d].pm.efteFTE,0),
+        efteFL:  DIVS.reduce((s,d)=>s+res[d].pm.efteFL,0),
+        efte:    DIVS.reduce((s,d)=>s+res[d].pm.efte,0),
       },
       des:{
-        fte:DIVS.reduce((s,d)=>s+res[d].des.fte,0),fl:DIVS.reduce((s,d)=>s+res[d].des.fl,0),total:DIVS.reduce((s,d)=>s+res[d].des.total,0),
-        efte:DIVS.reduce((s,d)=>s+res[d].des.efte,0),
+        fte:     DIVS.reduce((s,d)=>s+res[d].des.fte,0),
+        fl:      DIVS.reduce((s,d)=>s+res[d].des.fl,0),
+        total:   DIVS.reduce((s,d)=>s+res[d].des.total,0),
+        efteFTE: DIVS.reduce((s,d)=>s+res[d].des.efteFTE,0),
+        efteFL:  DIVS.reduce((s,d)=>s+res[d].des.efteFL,0),
+        efte:    DIVS.reduce((s,d)=>s+res[d].des.efte,0),
       },
     };
     return res;
   },[capacityRoster,WD]);
 
-  // Active pools use effective FTE (weighted) not raw headcount
+  // Active day-pools use weighted efte
   const activePools=useMemo(()=>{
     const res={};
     [...DIVS,"All"].forEach(div=>{
-      const hc=poolsByDiv[div]||poolsByDiv["All"];
+      const hc=poolsByDiv[div];
       res[div]={
-        pm: Math.round(hc.pm.efte  * WD * (utilPM /100)),
-        des:Math.round(hc.des.efte * WD * (utilDes/100)),
+        pm:  Math.round((hc.pm.efte  ||0)*WD*(utilPM /100)),
+        des: Math.round((hc.des.efte ||0)*WD*(utilDes/100)),
       };
     });
     return res;
@@ -432,6 +461,7 @@ export default function App(){
   },[complexity,divAsset,eanBand,syndCplx,clientDays,slaOv]);
 
   const calcSlaMap=slaMaps[calcDiv]||slaMaps["LDB"];
+
   const mixAnalysis=useMemo(()=>DIVS.map(div=>{
     let tPM=0,tDes=0,tProj=0,tAssets=0;
     const slaM=slaMaps[div];
@@ -443,35 +473,82 @@ export default function App(){
     return{div,rows,tPM,tDes,tProj,tAssets};
   }),[mix,slaMaps]);
 
-  const combined=useMemo(()=>{const a={div:"All",tPM:0,tDes:0,tProj:0,tAssets:0};mixAnalysis.forEach(d=>{a.tPM+=d.tPM;a.tDes+=d.tDes;a.tProj+=d.tProj;a.tAssets+=d.tAssets;});return a;},[mixAnalysis]);
+  const combined=useMemo(()=>{
+    const a={div:"All",tPM:0,tDes:0,tProj:0,tAssets:0};
+    mixAnalysis.forEach(d=>{a.tPM+=d.tPM;a.tDes+=d.tDes;a.tProj+=d.tProj;a.tAssets+=d.tAssets;});
+    return a;
+  },[mixAnalysis]);
+
   const getA=d=>d==="All"?combined:(mixAnalysis.find(x=>x.div===d)||combined);
   const cur=getA(divFilter),ap=activePools[divFilter]||activePools["All"];
   const uc=(d,a)=>a>0?Math.round((d/a)*100):0;
   const uPM=uc(cur.tPM,ap.pm),uDes=uc(cur.tDes,ap.des);
-  const rag=u=>u<=85?{dot:"🟢",bg:"bg-green-50",brd:"border-green-200",tx:"text-green-700",bar:"bg-green-500"}:u<=100?{dot:"🟡",bg:"bg-amber-50",brd:"border-amber-200",tx:"text-amber-700",bar:"bg-amber-400"}:{dot:"🔴",bg:"bg-red-50",brd:"border-red-200",tx:"text-red-700",bar:"bg-red-500"};
+  const rag=u=>u<=85?{dot:"🟢",bg:"bg-green-50",brd:"border-green-200",tx:"text-green-700",bar:"bg-green-500"}
+               :u<=100?{dot:"🟡",bg:"bg-amber-50",brd:"border-amber-200",tx:"text-amber-700",bar:"bg-amber-400"}
+               :       {dot:"🔴",bg:"bg-red-50",  brd:"border-red-200",  tx:"text-red-700",  bar:"bg-red-500"};
 
   const monthlyProj=Math.round(combined.tProj/period.months);
   const monthlyAssets=Math.round(combined.tAssets/period.months);
-  const globalHC=poolsByDiv["All"];
-  const fteDes=capacityRoster.filter(p=>p.role==="Integrated Designer"&&p.type==="FTE").length;
-  const flDes=capacityRoster.filter(p=>p.role==="Integrated Designer"&&p.type==="Freelance").length;
-  const ftePM=capacityRoster.filter(p=>p.role==="Project Manager"&&p.type==="FTE").length;
-  const flPM=capacityRoster.filter(p=>p.role==="Project Manager"&&p.type==="Freelance").length;
-  const fteAssetCap=Math.round(globalHC.des.efteFTE * 21 * (utilDes/100) * ASSETS_PER_DESIGNER_DAY);
-  const flAssetCap =Math.round(globalHC.des.efteFL  * 21 * (utilDes/100) * ASSETS_PER_DESIGNER_DAY);
-  const totalAssetCap=fteAssetCap+flAssetCap;
-  const divAssetCap=useMemo(()=>{const t=globalHC.des.efte||1;return{LDB:Math.round((poolsByDiv["LDB"].des.efte/t)*totalAssetCap),PPD:Math.round((poolsByDiv["PPD"].des.efte/t)*totalAssetCap),LLD:Math.round((poolsByDiv["LLD"].des.efte/t)*totalAssetCap)};},[poolsByDiv,totalAssetCap]);
-  const pmCapByDiv=useMemo(()=>({LDB:PM_BY_DIV.LDB*projectsPerPM,PPD:PM_BY_DIV.PPD*projectsPerPM,LLD:PM_BY_DIV.LLD*projectsPerPM,Total:(PM_BY_DIV.LDB+PM_BY_DIV.PPD+PM_BY_DIV.LLD)*projectsPerPM}),[projectsPerPM]);
+  const globalHC=poolsByDiv["All"];  // now safe — "All" has all fields
 
-  const forecastChartData=FORECAST_MONTHS.map((fm,i)=>{const a=actuals[i];return{...fm,totalCapacity:totalAssetCap,ldbCapacity:divAssetCap.LDB,ppdCapacity:divAssetCap.PPD,lldCapacity:divAssetCap.LLD,actualAssets:a.actualAssets||null,actualLdb:a.actualLdb||null,actualPpd:a.actualPpd||null,actualLld:a.actualLld||null,totalPMProjects:fm.permPM+fm.flyPM};});
-  const activeForecastData=useMemo(()=>forecastChartData.map(d=>{if(forecastDiv==="LDB")return{...d,targetAssets:d.ldb,capacityLine:d.ldbCapacity,actualAssets:d.actualLdb};if(forecastDiv==="PPD")return{...d,targetAssets:d.ppd,capacityLine:d.ppdCapacity,actualAssets:d.actualPpd};if(forecastDiv==="LLD")return{...d,targetAssets:d.lld,capacityLine:d.lldCapacity,actualAssets:d.actualLld};return{...d,targetAssets:d.gt,capacityLine:totalAssetCap,actualAssets:d.actualAssets};}),[forecastChartData,forecastDiv,totalAssetCap]);
-  const divSummaryData=DIVS.map(div=>{const a=mixAnalysis.find(x=>x.div===div),p=activePools[div],hc=poolsByDiv[div];return{name:div,Projects:a.tProj,Assets:Math.round(a.tAssets),PMUtil:uc(a.tPM,p.pm),DesUtil:uc(a.tDes,p.des)};});
+  // Headcount for display (unweighted)
+  const fteDes=capacityRoster.filter(p=>p.role==="Integrated Designer"&&p.type==="FTE").length;
+  const flDes =capacityRoster.filter(p=>p.role==="Integrated Designer"&&p.type==="Freelance").length;
+  const ftePM =capacityRoster.filter(p=>p.role==="Project Manager"&&p.type==="FTE").length;
+  const flPM  =capacityRoster.filter(p=>p.role==="Project Manager"&&p.type==="Freelance").length;
+
+  // Asset capacity — uses weighted efte from "All" (now guaranteed to exist)
+  const fteAssetCap=Math.round((globalHC.des.efteFTE||0)*21*(utilDes/100)*ASSETS_PER_DESIGNER_DAY);
+  const flAssetCap =Math.round((globalHC.des.efteFL ||0)*21*(utilDes/100)*ASSETS_PER_DESIGNER_DAY);
+  const totalAssetCap=fteAssetCap+flAssetCap;
+
+  // Per-division asset capacity — weighted by each division's efte share
+  const divAssetCap=useMemo(()=>{
+    const totalEfte=globalHC.des.efte||1;  // safe — "All" has efte
+    return{
+      LDB:Math.round((poolsByDiv["LDB"].des.efte/totalEfte)*totalAssetCap),
+      PPD:Math.round((poolsByDiv["PPD"].des.efte/totalEfte)*totalAssetCap),
+      LLD:Math.round((poolsByDiv["LLD"].des.efte/totalEfte)*totalAssetCap),
+    };
+  },[poolsByDiv,totalAssetCap]);
+
+  const pmCapByDiv=useMemo(()=>({
+    LDB:PM_BY_DIV.LDB*projectsPerPM,
+    PPD:PM_BY_DIV.PPD*projectsPerPM,
+    LLD:PM_BY_DIV.LLD*projectsPerPM,
+    Total:(PM_BY_DIV.LDB+PM_BY_DIV.PPD+PM_BY_DIV.LLD)*projectsPerPM,
+  }),[projectsPerPM]);
+
+  const forecastChartData=FORECAST_MONTHS.map((fm,i)=>{
+    const a=actuals[i];
+    return{...fm,totalCapacity:totalAssetCap,ldbCapacity:divAssetCap.LDB,ppdCapacity:divAssetCap.PPD,lldCapacity:divAssetCap.LLD,
+      actualAssets:a.actualAssets||null,actualLdb:a.actualLdb||null,actualPpd:a.actualPpd||null,actualLld:a.actualLld||null,
+      totalPMProjects:fm.permPM+fm.flyPM};
+  });
+
+  const activeForecastData=useMemo(()=>forecastChartData.map(d=>{
+    if(forecastDiv==="LDB")return{...d,targetAssets:d.ldb,capacityLine:d.ldbCapacity,actualAssets:d.actualLdb};
+    if(forecastDiv==="PPD")return{...d,targetAssets:d.ppd,capacityLine:d.ppdCapacity,actualAssets:d.actualPpd};
+    if(forecastDiv==="LLD")return{...d,targetAssets:d.lld,capacityLine:d.lldCapacity,actualAssets:d.actualLld};
+    return{...d,targetAssets:d.gt,capacityLine:totalAssetCap,actualAssets:d.actualAssets};
+  }),[forecastChartData,forecastDiv,totalAssetCap]);
+
+  const divSummaryData=DIVS.map(div=>{
+    const a=mixAnalysis.find(x=>x.div===div),p=activePools[div];
+    return{name:div,Projects:a.tProj,Assets:Math.round(a.tAssets),PMUtil:uc(a.tPM,p.pm),DesUtil:uc(a.tDes,p.des)};
+  });
+
   const calcPt=PT.find(p=>p.id===calcType),calcSla=calcSlaMap[calcType];
-  const tmFiltered=useMemo(()=>roster.filter(p=>{if(tmDiv!=="All"&&p.division!==tmDiv)return false;if(tmType!=="All"&&p.type!==tmType)return false;if(tmRole!=="All"&&p.role!==tmRole)return false;if(tmSearch&&!p.name.toLowerCase().includes(tmSearch.toLowerCase()))return false;return true;}),[roster,tmSearch,tmDiv,tmType,tmRole]);
+  const tmFiltered=useMemo(()=>roster.filter(p=>{
+    if(tmDiv!=="All"&&p.division!==tmDiv)return false;
+    if(tmType!=="All"&&p.type!==tmType)return false;
+    if(tmRole!=="All"&&p.role!==tmRole)return false;
+    if(tmSearch&&!p.name.toLowerCase().includes(tmSearch.toLowerCase()))return false;
+    return true;
+  }),[roster,tmSearch,tmDiv,tmType,tmRole]);
+
   const updateActual=(i,field,val)=>setActuals(prev=>prev.map((a,idx)=>idx===i?{...a,[field]:Math.max(0,parseInt(val)||0)}:a));
   const DIV_PROJ_KEY={LDB:"ldbProj",PPD:"ppdProj",LLD:"lldProj"};
-
-  // Pending starters — not yet started
   const pendingStarters=useMemo(()=>capacityRoster.filter(p=>p.startDate&&p.startDate!=="now"&&new Date(p.startDate)>new Date()).sort((a,b)=>new Date(a.startDate)-new Date(b.startDate)),[capacityRoster]);
 
   const DivAssetPanel=({div})=>{
@@ -501,17 +578,6 @@ export default function App(){
     );
   };
 
-  // Start date selector component (reused in Add and Edit)
-  const StartDateSelect=({value,onChange,compact=false})=>(
-    <div>
-      {!compact&&<label className="text-xs font-semibold text-gray-700 block mb-1">Start Date (week commencing)</label>}
-      <select value={value||"now"} onChange={e=>onChange(e.target.value)}
-        className={`border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-blue-400 ${compact?"w-28":"w-full"}`}>
-        {WEEK_OPTIONS.map(w=>(<option key={w.value} value={w.value}>{w.label}</option>))}
-      </select>
-    </div>
-  );
-
   return(
     <div className="bg-gray-50 min-h-screen font-sans">
 
@@ -521,7 +587,10 @@ export default function App(){
           <div>
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">L'Oréal eCommerce Programme · Global Programme Director</p>
             <h1 className="text-xl font-black mt-0.5">Capacity & Volume Planning Tool</h1>
-            <p className="text-xs text-gray-400 mt-0.5">PM Pool: {globalHC.pm.total} ({ftePM} FTE + {flPM} FL) · Designer Pool: {globalHC.des.total} ({fteDes} FTE + {flDes} FL) · Asset cap: {totalAssetCap.toLocaleString()}/mo · {pendingStarters.length>0&&<span className="text-amber-400">⏳ {pendingStarters.length} pending starter{pendingStarters.length>1?"s":""}</span>}</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              PM Pool: {globalHC.pm.total} ({ftePM} FTE + {flPM} FL) · Designer Pool: {globalHC.des.total} ({fteDes} FTE + {flDes} FL) · Asset cap: {totalAssetCap.toLocaleString()}/mo
+              {pendingStarters.length>0&&<span className="text-amber-400"> · ⏳ {pendingStarters.length} pending starter{pendingStarters.length>1?"s":""}</span>}
+            </p>
           </div>
           <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${dbStatus==="connected"?"bg-green-100 text-green-700":dbStatus==="loading"?"bg-blue-100 text-blue-700":dbStatus==="offline"?"bg-gray-100 text-gray-500":"bg-red-100 text-red-600"}`}>
             <div className={`w-2 h-2 rounded-full ${dbStatus==="connected"?"bg-green-500":dbStatus==="loading"?"bg-blue-400":dbStatus==="offline"?"bg-gray-400":"bg-red-400"}`}/>
@@ -542,11 +611,12 @@ export default function App(){
           </div>
           {period.months>1&&<p className="text-xs text-blue-600 mt-2 font-semibold">ℹ️ Monthly equivalent: <strong>{monthlyProj} projects/month</strong> · <strong>~{monthlyAssets.toLocaleString()} assets/month</strong></p>}
         </div>
+
         <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3 mb-3">
           <div><label className="text-xs font-semibold text-gray-700 block mb-0.5">PM Util: {utilPM}%</label><input type="range" min={60} max={95} value={utilPM} onChange={e=>{setUtilPM(+e.target.value);saveSettings({utilPM:+e.target.value});}} className="w-full accent-blue-600"/></div>
           <div><label className="text-xs font-semibold text-gray-700 block mb-0.5">Designer Util: {utilDes}%</label><input type="range" min={60} max={95} value={utilDes} onChange={e=>{setUtilDes(+e.target.value);saveSettings({utilDes:+e.target.value});}} className="w-full accent-purple-600"/></div>
           <div>
-            <label className="text-xs font-semibold text-gray-700 block mb-0.5">PM Concurrent Projects: <span className="text-blue-600 font-black">{projectsPerPM}</span></label>
+            <label className="text-xs font-semibold text-gray-700 block mb-0.5">PM Concurrent: <span className="text-blue-600 font-black">{projectsPerPM}</span></label>
             <input type="range" min={3} max={25} value={projectsPerPM} onChange={e=>{setProjectsPerPM(+e.target.value);saveSettings({projectsPerPM:+e.target.value});}} className="w-full accent-blue-600"/>
             <div className="flex justify-between text-xs text-gray-400 mt-0.5"><span>3</span><span>10</span><span>15</span><span>20</span><span>25</span></div>
           </div>
@@ -563,34 +633,42 @@ export default function App(){
             <div className="grid grid-cols-3 gap-1 text-xs text-center">{DIVS.map(div=>(<div key={div}><p className="font-bold" style={{color:DIV_COLORS[div]}}>{div}</p><p className="font-black text-gray-900">{pmCapByDiv[div]}</p></div>))}</div>
           </div>
         </div>
+
         <div className="mb-3"><div className="flex items-center gap-2 mb-2"><p className="text-xs font-bold text-gray-700 uppercase tracking-wide">📦 Asset Volume per Brief — by Division</p></div><div className="grid grid-cols-3 gap-3">{DIVS.map(div=><DivAssetPanel key={div} div={div}/>)}</div></div>
+
         <div className="grid grid-cols-2 gap-3 mb-3">
           <div><label className="text-xs font-semibold text-gray-700 block mb-1">EAN Band</label><div className="flex gap-1">{["1-5 EANs","5-10 EANs","10-15 EANs"].map(b=>(<button key={b} onClick={()=>{setEanBand(b);saveSettings({eanBand:b});}} className={`px-2 py-0.5 text-xs rounded font-semibold ${eanBand===b?"bg-teal-600 text-white":"bg-gray-100 text-gray-600"}`}>{b.replace(" EANs","")}</button>))}</div></div>
           <div><label className="text-xs font-semibold text-gray-700 block mb-1">Syndication Complexity</label><div className="flex gap-1">{["Simple","Mid","Complex"].map(c=>(<button key={c} onClick={()=>{setSyndCplx(c);saveSettings({syndCplx:c});}} className={`px-2 py-0.5 text-xs rounded font-semibold ${syndCplx===c?"bg-green-600 text-white":"bg-gray-100 text-gray-600"}`}>{c}</button>))}</div></div>
         </div>
+
         <div className="grid grid-cols-3 gap-3">
-          {DIVS.map(div=>{const hc=poolsByDiv[div],pools=activePools[div];const{mid}=resolveAssetConfig(divAsset[div]);return(
-            <div key={div} className="rounded-xl border border-gray-200 bg-gray-50 p-3">
-              <p className="text-xs font-black uppercase mb-2" style={{color:DIV_COLORS[div]}}>{div} — {period.label}</p>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-2 text-center">
-                  <p className="text-xs text-blue-500 font-semibold">PMs</p>
-                  <p className="text-lg font-black text-blue-700">{hc.pm.total}</p>
-                  <p className="text-xs text-blue-400">{hc.pm.fte}F·{hc.pm.fl}FL</p>
-                  {Math.abs(hc.pm.efte-hc.pm.total)>0.05&&<p className="text-xs text-amber-500 font-semibold">eFTE: {hc.pm.efte.toFixed(1)}</p>}
-                  <p className="text-xs font-bold text-blue-600">{pools.pm}d</p>
+          {DIVS.map(div=>{
+            const hc=poolsByDiv[div],pools=activePools[div];
+            const{mid}=resolveAssetConfig(divAsset[div]);
+            const hasPending=Math.abs(hc.pm.efte-hc.pm.total)>0.05||Math.abs(hc.des.efte-hc.des.total)>0.05;
+            return(
+              <div key={div} className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                <p className="text-xs font-black uppercase mb-2" style={{color:DIV_COLORS[div]}}>{div} — {period.label}</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-2 text-center">
+                    <p className="text-xs text-blue-500 font-semibold">PMs</p>
+                    <p className="text-lg font-black text-blue-700">{hc.pm.total}</p>
+                    <p className="text-xs text-blue-400">{hc.pm.fte}F·{hc.pm.fl}FL</p>
+                    {hasPending&&<p className="text-xs text-amber-500 font-semibold">eFTE: {hc.pm.efte.toFixed(1)}</p>}
+                    <p className="text-xs font-bold text-blue-600">{pools.pm}d</p>
+                  </div>
+                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-2 text-center">
+                    <p className="text-xs text-purple-500 font-semibold">Designers</p>
+                    <p className="text-lg font-black text-purple-700">{hc.des.total}</p>
+                    <p className="text-xs text-purple-400">{hc.des.fte}F·{hc.des.fl}FL</p>
+                    {hasPending&&<p className="text-xs text-amber-500 font-semibold">eFTE: {hc.des.efte.toFixed(1)}</p>}
+                    <p className="text-xs font-bold text-purple-600">{pools.des}d</p>
+                  </div>
                 </div>
-                <div className="bg-purple-50 border border-purple-200 rounded-lg p-2 text-center">
-                  <p className="text-xs text-purple-500 font-semibold">Designers</p>
-                  <p className="text-lg font-black text-purple-700">{hc.des.total}</p>
-                  <p className="text-xs text-purple-400">{hc.des.fte}F·{hc.des.fl}FL</p>
-                  {Math.abs(hc.des.efte-hc.des.total)>0.05&&<p className="text-xs text-amber-500 font-semibold">eFTE: {hc.des.efte.toFixed(1)}</p>}
-                  <p className="text-xs font-bold text-purple-600">{pools.des}d</p>
-                </div>
+                <p className="text-xs text-center mt-1.5 font-semibold text-gray-500">~{mid} assets/brief · PM cap: {pmCapByDiv[div]}</p>
               </div>
-              <p className="text-xs text-center mt-1.5 font-semibold text-gray-500">~{mid} assets/brief · PM cap: {pmCapByDiv[div]} projects</p>
-            </div>
-          );})}
+            );
+          })}
         </div>
       </div>
 
@@ -612,31 +690,14 @@ export default function App(){
         {/* ══ CAPACITY ══ */}
         {activeTab==="📊 Capacity"&&(
           <div className="space-y-4">
-            <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 flex items-center justify-between flex-wrap gap-2">
-              <p className="text-sm font-bold text-blue-800">📅 All figures for <span className="underline">{period.label}</span> ({WD} working days) · Capacity adjusted for start dates</p>
-              {period.months>1&&<p className="text-xs text-blue-600">Monthly: <strong>{monthlyProj} projects/mo</strong> · <strong>~{monthlyAssets.toLocaleString()} assets/mo</strong></p>}
-            </div>
             {pendingStarters.length>0&&(
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
-                <p className="text-xs font-bold text-amber-700 mb-2">⏳ Pending Starters — partial capacity included in {period.label} view</p>
+                <p className="text-xs font-bold text-amber-700 mb-2">⏳ Pending Starters — capacity pro-rated for {period.label}</p>
                 <div className="flex flex-wrap gap-2">
-                  {pendingStarters.map(p=>{const frac=availabilityFraction(p.startDate,WD);return(<div key={p.id} className="flex items-center gap-2 bg-white border border-amber-200 rounded-lg px-3 py-1.5 text-xs"><span className="font-semibold text-gray-900">{p.name}</span><span className="text-gray-400">{p.division}</span><span className="font-bold text-amber-600">{startLabel(p.startDate)}</span><span className="text-gray-400">({Math.round(frac*100)}% of period)</span></div>);})}
+                  {pendingStarters.map(p=>{const frac=availabilityFraction(p.startDate,WD);return(<div key={p.id} className="flex items-center gap-2 bg-white border border-amber-200 rounded-lg px-3 py-1.5 text-xs"><span className="font-semibold">{p.name}</span><span className="text-gray-400">{p.division}</span><span className="font-bold text-amber-600">{startLabel(p.startDate)}</span><span className="text-gray-400">({Math.round(frac*100)}%)</span></div>);})}
                 </div>
               </div>
             )}
-            <div className="grid grid-cols-3 gap-3">
-              {DIVS.map(div=>{const{mid}=resolveAssetConfig(divAsset[div]);const da=mixAnalysis.find(x=>x.div===div);const p=activePools[div];const uP=uc(da.tPM,p.pm),uD=uc(da.tDes,p.des),rP=rag(uP),rD=rag(uD);return(
-                <div key={div} className="bg-white rounded-xl border border-gray-200 p-3">
-                  <div className="flex justify-between items-start mb-2"><span className="text-xs font-black uppercase" style={{color:DIV_COLORS[div]}}>{div}</span><span className="text-xs bg-gray-100 text-gray-600 font-semibold px-2 py-0.5 rounded-full">{divAssetLabel(div)}</span></div>
-                  <div className="grid grid-cols-2 gap-1 text-xs">
-                    <div><span className="text-gray-500">Projects: </span><span className="font-bold text-blue-700">{da.tProj}</span></div>
-                    <div><span className="text-gray-500">Assets: </span><span className="font-bold text-indigo-700">{da.tAssets.toLocaleString()}</span></div>
-                    <div className={`font-bold ${rP.tx}`}>PM: {uP}%</div>
-                    <div className={`font-bold ${rD.tx}`}>Des: {uD}%</div>
-                  </div>
-                </div>
-              );})}
-            </div>
             <div className="grid grid-cols-4 gap-3">
               {[{label:`Projects (${divFilter})`,val:cur.tProj,unit:"projects",bg:"bg-blue-600 text-white"},{label:`Assets (${divFilter})`,val:cur.tAssets.toLocaleString(),unit:"assets",bg:"bg-indigo-600 text-white"},{label:`PM Util — ${divFilter}`,val:`${uPM}%`,unit:rag(uPM).dot,bg:`${rag(uPM).bg} ${rag(uPM).tx} border ${rag(uPM).brd}`},{label:`Designer Util — ${divFilter}`,val:`${uDes}%`,unit:rag(uDes).dot,bg:`${rag(uDes).bg} ${rag(uDes).tx} border ${rag(uDes).brd}`}].map(k=>(<div key={k.label} className={`rounded-xl p-3 text-center ${k.bg}`}><p className="text-xs font-semibold opacity-80 leading-tight">{k.label}</p><p className="text-2xl font-black">{k.val}</p><p className="text-xs opacity-70">{k.unit}</p></div>))}
             </div>
@@ -656,7 +717,9 @@ export default function App(){
           <div className="space-y-4">
             <div className="bg-gray-900 text-white rounded-xl px-4 py-3 flex flex-wrap gap-4 items-center">
               <div><p className="text-xs text-gray-400 uppercase font-bold mb-0.5">Data Source</p><p className="text-xs text-gray-300">Oliver tab · GRAND TOTAL LLD 50% March · Jan–Dec 2026 · Mar LLD = 5,348</p></div>
-              <div className="flex gap-3 ml-auto flex-wrap">{[{l:"Total cap/mo",v:totalAssetCap.toLocaleString(),c:"green"},{l:"LDB cap/mo",v:divAssetCap.LDB.toLocaleString(),c:"amber"},{l:"PPD cap/mo",v:divAssetCap.PPD.toLocaleString(),c:"purple"},{l:"LLD cap/mo",v:divAssetCap.LLD.toLocaleString(),c:"blue"},{l:"PM concurrent",v:`${projectsPerPM}/PM`,c:"blue"}].map(s=>(<div key={s.l} className="bg-gray-800 rounded-lg px-3 py-1.5 text-center"><p className="text-xs text-gray-400">{s.l}</p><p className={`text-sm font-black text-${s.c}-400`}>{s.v}</p></div>))}</div>
+              <div className="flex gap-3 ml-auto flex-wrap">
+                {[{l:"Total cap/mo",v:totalAssetCap.toLocaleString(),c:"green"},{l:"LDB cap/mo",v:divAssetCap.LDB.toLocaleString(),c:"amber"},{l:"PPD cap/mo",v:divAssetCap.PPD.toLocaleString(),c:"purple"},{l:"LLD cap/mo",v:divAssetCap.LLD.toLocaleString(),c:"blue"},{l:"PM concurrent",v:`${projectsPerPM}/PM`,c:"blue"}].map(s=>(<div key={s.l} className="bg-gray-800 rounded-lg px-3 py-1.5 text-center"><p className="text-xs text-gray-400">{s.l}</p><p className={`text-sm font-black text-${s.c}-400`}>{s.v}</p></div>))}
+              </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               <p className="text-xs font-bold text-gray-500 uppercase">Asset chart view:</p>
@@ -703,17 +766,18 @@ export default function App(){
                   <h3 className="font-black text-gray-900 text-sm">Project Volume — Forecast</h3>
                   <div className="flex gap-1">{["Total","LDB","PPD","LLD"].map(d=>(<button key={d} onClick={()=>setProjView(d)} className={`px-2.5 py-1 text-xs rounded-full font-bold transition-all ${projView===d?"text-white":"bg-gray-100 text-gray-600"}`} style={projView===d?{background:d==="Total"?"#1f2937":DIV_COLORS[d]}:{}}>{d}</button>))}</div>
                 </div>
-                <div className="bg-blue-50 border border-blue-100 rounded-lg px-3 py-1.5 mb-3 flex items-center justify-between"><p className="text-xs text-blue-600 font-semibold">PM concurrent: <strong>{projectsPerPM}/PM</strong></p><p className="text-xs text-blue-400">{projView==="Total"?`Total cap: ${pmCapByDiv.Total}`:`${projView}: ${pmCapByDiv[projView]||"—"}`} proj/mo</p></div>
+                <div className="bg-blue-50 border border-blue-100 rounded-lg px-3 py-1.5 mb-3 flex items-center justify-between"><p className="text-xs text-blue-600 font-semibold">PM concurrent: <strong>{projectsPerPM}/PM</strong></p><p className="text-xs text-blue-400">{projView==="Total"?`Total cap: ${pmCapByDiv.Total}`:`${projView}: ${pmCapByDiv[projView]}`} proj/mo</p></div>
                 {projView==="Total"?(
                   <>
                     <div className="grid grid-cols-5 gap-1 mb-1"><p className="text-xs font-bold text-gray-400 uppercase">Month</p><p className="text-xs font-bold text-gray-400 uppercase text-right">Forecast</p><p className="text-xs font-bold text-gray-400 uppercase text-right">Perm PM</p><p className="text-xs font-bold text-gray-400 uppercase text-right">Flying PM</p><p className="text-xs font-bold text-gray-400 uppercase text-right">Cover %</p></div>
                     <div className="h-px bg-gray-100 mb-2"/>
                     <div className="space-y-1.5">{FORECAST_MONTHS.map(row=>{const pmTotal=row.permPM+row.flyPM,pct=Math.round((pmTotal/row.forecastProjects)*100),gap=pmTotal-row.forecastProjects;const ragTx=pct>=100?"text-green-600":pct>=85?"text-amber-600":"text-red-600";const barC=pct>=100?"bg-green-500":pct>=85?"bg-amber-400":"bg-red-400";return(<div key={row.month}><div className="grid grid-cols-5 gap-1 items-center text-xs"><span className="font-semibold text-gray-700">{row.month}</span><span className="text-right font-bold text-blue-700">{row.forecastProjects}</span><span className="text-right text-gray-600">{row.permPM}</span><span className="text-right text-gray-500">{row.flyPM>0?`+${row.flyPM}`:"—"}</span><span className={`text-right font-bold ${ragTx}`}>{pct}%</span></div><div className="w-full bg-gray-100 rounded h-1 mt-0.5"><div className={`h-1 rounded ${barC}`} style={{width:`${Math.min(pct,100)}%`}}/></div>{gap<0&&<p className="text-xs text-red-500 text-right">{Math.abs(gap)} gap</p>}</div>);})}
                     </div>
-                    <div className="mt-3 pt-2 border-t border-gray-100 space-y-1 text-xs font-bold text-gray-700"><div className="flex justify-between"><span>Year total</span><span className="text-blue-700">{FORECAST_MONTHS.reduce((s,m)=>s+m.forecastProjects,0)} projects</span></div></div>
+                    <div className="mt-3 pt-2 border-t border-gray-100 text-xs font-bold text-gray-700 flex justify-between"><span>Year total</span><span className="text-blue-700">{FORECAST_MONTHS.reduce((s,m)=>s+m.forecastProjects,0)} projects</span></div>
                   </>
                 ):(
                   <>
+                    <div className="flex items-center gap-2 mb-2"><div className="w-3 h-3 rounded-full" style={{background:DIV_COLORS[projView]}}/><p className="text-xs text-gray-500">{projView} · {PM_BY_DIV[projView]} PMs × {projectsPerPM} = <strong>{pmCapByDiv[projView]} concurrent</strong></p></div>
                     <div className="grid grid-cols-4 gap-1 mb-1"><p className="text-xs font-bold text-gray-400 uppercase">Month</p><p className="text-xs font-bold text-gray-400 uppercase text-right">Forecast</p><p className="text-xs font-bold text-gray-400 uppercase text-right">PM Cap</p><p className="text-xs font-bold text-gray-400 uppercase text-right">Cover %</p></div>
                     <div className="h-px bg-gray-100 mb-2"/>
                     <div className="space-y-1.5">{FORECAST_MONTHS.map(row=>{const forecast=row[DIV_PROJ_KEY[projView]],pmCap=pmCapByDiv[projView],pct=Math.round((pmCap/forecast)*100),gap=pmCap-forecast;const ragTx=pct>=100?"text-green-600":pct>=75?"text-amber-600":"text-red-600";const barC=pct>=100?"bg-green-500":pct>=75?"bg-amber-400":"bg-red-400";return(<div key={row.month}><div className="grid grid-cols-4 gap-1 items-center text-xs"><span className="font-semibold text-gray-700">{row.month}</span><span className="text-right font-bold" style={{color:DIV_COLORS[projView]}}>{forecast}</span><span className="text-right text-gray-600">{pmCap}</span><span className={`text-right font-bold ${ragTx}`}>{pct}%</span></div><div className="w-full bg-gray-100 rounded h-1 mt-0.5"><div className={`h-1 rounded ${barC}`} style={{width:`${Math.min(pct,100)}%`}}/></div>{gap<0&&<p className="text-xs text-red-500 text-right">{Math.abs(gap)} gap</p>}</div>);})}
@@ -748,10 +812,16 @@ export default function App(){
                       </tr>
                     );})}
                     <tr className="border-t-2 border-gray-300 bg-gray-50 font-bold text-xs">
-                      <td className="py-2 pl-2">Total</td><td className="py-2 text-center text-blue-700 bg-blue-50">{FORECAST_MONTHS.reduce((s,m)=>s+m.gt,0).toLocaleString()}</td><td className="py-2 text-center text-amber-600">{actuals.reduce((s,a)=>s+(a.actualAssets||0),0).toLocaleString()}</td>
-                      <td className="py-2 text-center" style={{color:DIV_COLORS.LDB}}>{FORECAST_MONTHS.reduce((s,m)=>s+m.ldb,0).toLocaleString()}</td><td className="py-2 text-center text-amber-600">{actuals.reduce((s,a)=>s+(a.actualLdb||0),0).toLocaleString()}</td>
-                      <td className="py-2 text-center" style={{color:DIV_COLORS.PPD}}>{FORECAST_MONTHS.reduce((s,m)=>s+m.ppd,0).toLocaleString()}</td><td className="py-2 text-center text-amber-600">{actuals.reduce((s,a)=>s+(a.actualPpd||0),0).toLocaleString()}</td>
-                      <td className="py-2 text-center" style={{color:DIV_COLORS.LLD}}>{FORECAST_MONTHS.reduce((s,m)=>s+m.lld,0).toLocaleString()}</td><td className="py-2 text-center text-amber-600">{actuals.reduce((s,a)=>s+(a.actualLld||0),0).toLocaleString()}</td><td></td>
+                      <td className="py-2 pl-2">Total</td>
+                      <td className="py-2 text-center text-blue-700 bg-blue-50">{FORECAST_MONTHS.reduce((s,m)=>s+m.gt,0).toLocaleString()}</td>
+                      <td className="py-2 text-center text-amber-600">{actuals.reduce((s,a)=>s+(a.actualAssets||0),0).toLocaleString()}</td>
+                      <td className="py-2 text-center" style={{color:DIV_COLORS.LDB}}>{FORECAST_MONTHS.reduce((s,m)=>s+m.ldb,0).toLocaleString()}</td>
+                      <td className="py-2 text-center text-amber-600">{actuals.reduce((s,a)=>s+(a.actualLdb||0),0).toLocaleString()}</td>
+                      <td className="py-2 text-center" style={{color:DIV_COLORS.PPD}}>{FORECAST_MONTHS.reduce((s,m)=>s+m.ppd,0).toLocaleString()}</td>
+                      <td className="py-2 text-center text-amber-600">{actuals.reduce((s,a)=>s+(a.actualPpd||0),0).toLocaleString()}</td>
+                      <td className="py-2 text-center" style={{color:DIV_COLORS.LLD}}>{FORECAST_MONTHS.reduce((s,m)=>s+m.lld,0).toLocaleString()}</td>
+                      <td className="py-2 text-center text-amber-600">{actuals.reduce((s,a)=>s+(a.actualLld||0),0).toLocaleString()}</td>
+                      <td></td>
                     </tr>
                   </tbody>
                 </table>
@@ -771,7 +841,7 @@ export default function App(){
                   <div className="flex justify-between mb-1"><div><h3 className="font-black text-gray-900">{div}</h3><span className="text-xs text-gray-400">{divAssetLabel(div)} · avg {mid}</span></div><div className="text-right"><p className="text-2xl font-black text-blue-700">{da.tProj}</p><p className="text-xs text-gray-400">~{Math.round(da.tProj/period.months)}/mo</p></div></div>
                   <p className="text-xs text-indigo-700 font-bold mb-3">~{da.tAssets.toLocaleString()} assets</p>
                   {[{l:"PM",u:uP,r:rP},{l:"Designer",u:uD,r:rD}].map(x=>(<div key={x.l} className="mb-2"><div className="flex justify-between text-xs mb-0.5"><span className="text-gray-600">{x.l}</span><span className={`font-bold ${x.r.tx}`}>{x.u}%</span></div><div className="w-full bg-gray-100 rounded h-2"><div className={`h-2 rounded ${x.r.bar}`} style={{width:`${Math.min(x.u,100)}%`}}/></div></div>))}
-                  <div className="mt-3 space-y-1">{da.rows.filter(r=>r.count>0).map(r=>(<div key={r.id} className="flex justify-between text-xs"><span className="text-gray-700 truncate max-w-28">{r.label.replace("Country ","").replace("Global ","G.").replace("Local ","L.")}</span><span className="font-bold text-gray-900">{r.count}×</span></div>))}</div>
+                  <div className="mt-3 space-y-1">{da.rows.filter(r=>r.count>0).map(r=>(<div key={r.id} className="flex justify-between text-xs"><span className="text-gray-700 truncate max-w-28">{r.label.replace("Country ","").replace("Global ","G.").replace("Local ","L.")}</span><span className="font-bold text-gray-900">{r.count}× <span className="text-gray-400 font-normal">{r.assets} assets</span></span></div>))}</div>
                 </div>
               );})}
             </div>
@@ -825,27 +895,20 @@ export default function App(){
         {activeTab==="👥 Team Manager"&&(
           <div className="space-y-4">
             {!hasSupabase&&<div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700 font-semibold">⚠️ Offline mode — add Supabase credentials to persist changes.</div>}
-
-            {/* Pending starters panel */}
             {pendingStarters.length>0&&(
               <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
-                <h3 className="text-sm font-bold text-amber-700 mb-2">⏳ Pending Starters — {pendingStarters.length} people not yet started</h3>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead><tr className="text-amber-600 uppercase"><th className="px-3 py-1 text-left">Name</th><th className="px-3 py-1 text-left">Role</th><th className="px-3 py-1 text-center">Div</th><th className="px-3 py-1 text-center">Start Week</th><th className="px-3 py-1 text-center">Capacity ({period.label})</th></tr></thead>
-                    <tbody>
-                      {pendingStarters.map(p=>{const frac=availabilityFraction(p.startDate,WD);return(<tr key={p.id} className="border-t border-amber-100"><td className="px-3 py-1.5 font-semibold text-gray-900">{p.name}</td><td className="px-3 py-1.5 text-gray-600">{p.role}</td><td className="px-3 py-1.5 text-center"><span className="font-bold text-xs px-2 py-0.5 rounded-full" style={{background:DIV_COLORS[p.division]+"22",color:DIV_COLORS[p.division]}}>{p.division}</span></td><td className="px-3 py-1.5 text-center font-bold text-amber-700">{startLabel(p.startDate)}</td><td className="px-3 py-1.5 text-center"><span className={`font-bold ${frac>=0.75?"text-green-600":frac>=0.4?"text-amber-600":"text-red-600"}`}>{Math.round(frac*100)}% of period</span><span className="text-gray-400 ml-1">({Math.round(frac*WD)} days)</span></td></tr>);})}
-                    </tbody>
-                  </table>
-                </div>
+                <h3 className="text-sm font-bold text-amber-700 mb-2">⏳ Pending Starters — {pendingStarters.length} not yet started</h3>
+                <table className="w-full text-xs">
+                  <thead><tr className="text-amber-600 uppercase"><th className="px-3 py-1 text-left">Name</th><th className="px-3 py-1 text-left">Role</th><th className="px-3 py-1 text-center">Div</th><th className="px-3 py-1 text-center">Start Week</th><th className="px-3 py-1 text-center">Capacity ({period.label})</th></tr></thead>
+                  <tbody>{pendingStarters.map(p=>{const frac=availabilityFraction(p.startDate,WD);return(<tr key={p.id} className="border-t border-amber-100"><td className="px-3 py-1.5 font-semibold">{p.name}</td><td className="px-3 py-1.5 text-gray-600">{p.role}</td><td className="px-3 py-1.5 text-center"><span className="font-bold text-xs px-2 py-0.5 rounded-full" style={{background:DIV_COLORS[p.division]+"22",color:DIV_COLORS[p.division]}}>{p.division}</span></td><td className="px-3 py-1.5 text-center font-bold text-amber-700">{startLabel(p.startDate)}</td><td className="px-3 py-1.5 text-center"><span className={`font-bold ${frac>=0.75?"text-green-600":frac>=0.4?"text-amber-600":"text-red-600"}`}>{Math.round(frac*100)}%</span><span className="text-gray-400 ml-1">({Math.round(frac*WD)}d of {WD})</span></td></tr>);})}
+                  </tbody>
+                </table>
               </div>
             )}
-
             <div className="grid grid-cols-4 gap-3">
               <div className="bg-gray-900 text-white rounded-xl p-3 text-center"><p className="text-xs opacity-70 uppercase">Active</p><p className="text-3xl font-black">{capacityRoster.length}</p><p className="text-xs opacity-50">{roster.filter(p=>p.removed).length} removed · {pendingStarters.length} pending</p></div>
               {DIVS.map(div=>{const hc=poolsByDiv[div];return(<div key={div} className="rounded-xl border border-gray-200 bg-white p-3"><p className="text-xs font-black uppercase mb-2" style={{color:DIV_COLORS[div]}}>{div}</p><div className="grid grid-cols-2 gap-1 text-center"><div className="bg-blue-50 rounded-lg p-1.5"><p className="text-xs text-blue-500">PMs</p><p className="font-black text-blue-700 text-lg">{hc.pm.total}</p><p className="text-xs text-blue-400">{hc.pm.fte}F·{hc.pm.fl}FL</p></div><div className="bg-purple-50 rounded-lg p-1.5"><p className="text-xs text-purple-500">Designers</p><p className="font-black text-purple-700 text-lg">{hc.des.total}</p><p className="text-xs text-purple-400">{hc.des.fte}F·{hc.des.fl}FL</p></div></div></div>);})}
             </div>
-
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4">
               <div className="flex flex-wrap gap-3 items-center justify-between mb-3">
                 <div className="flex flex-wrap gap-2 items-center">
@@ -855,45 +918,31 @@ export default function App(){
                 </div>
                 <button onClick={()=>setShowAdd(true)} className="px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700">+ Add Person</button>
               </div>
-
-              {/* ── ADD PERSON FORM ── */}
               {showAdd&&(
                 <div className="mb-4 bg-blue-50 border border-blue-200 rounded-xl p-4">
                   <h3 className="text-sm font-bold text-blue-800 mb-3">➕ Add New Team Member</h3>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3">
                     <div><label className="text-xs font-semibold text-gray-700 block mb-1">Full Name *</label><input value={newP.name} onChange={e=>setNewP(p=>({...p,name:e.target.value}))} placeholder="e.g. Jane Smith" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"/></div>
                     {[{label:"Role",val:newP.role,set:v=>setNewP(p=>({...p,role:v})),opts:ROLE_OPTIONS},{label:"Function",val:newP.family,set:v=>setNewP(p=>({...p,family:v})),opts:FAMILY_OPTIONS},{label:"Contract",val:newP.type,set:v=>setNewP(p=>({...p,type:v})),opts:["FTE","Freelance"]},{label:"Division",val:newP.division,set:v=>setNewP(p=>({...p,division:v})),opts:["LDB","PPD","LLD","ALL"]},{label:"Status",val:newP.status,set:v=>setNewP(p=>({...p,status:v})),opts:STATUS_OPTIONS}].map(f=>(<div key={f.label}><label className="text-xs font-semibold text-gray-700 block mb-1">{f.label}</label><select value={f.val} onChange={e=>f.set(e.target.value)} className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none">{f.opts.map(o=><option key={o}>{o}</option>)}</select></div>))}
-                    {/* Start Date */}
                     <div className="md:col-span-3 bg-blue-100 rounded-xl p-3">
-                      <label className="text-xs font-bold text-blue-800 block mb-1.5">📅 Start Date (week commencing)</label>
-                      <p className="text-xs text-blue-600 mb-2">Sets how much of the current planning period this person contributes to capacity. Selecting a future week pro-rates their capacity accordingly.</p>
-                      <select value={newP.startDate||"now"} onChange={e=>setNewP(p=>({...p,startDate:e.target.value}))}
-                        className="w-full border border-blue-300 rounded-lg px-3 py-2 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 font-semibold">
+                      <label className="text-xs font-bold text-blue-800 block mb-1">📅 Start Date (week commencing)</label>
+                      <p className="text-xs text-blue-600 mb-2">Sets how much of the planning period this person contributes to capacity.</p>
+                      <select value={newP.startDate||"now"} onChange={e=>setNewP(p=>({...p,startDate:e.target.value}))} className="w-full border border-blue-300 rounded-lg px-3 py-2 text-xs bg-white focus:outline-none font-semibold">
                         {WEEK_OPTIONS.map(w=>(<option key={w.value} value={w.value}>{w.label}</option>))}
                       </select>
                       {newP.startDate&&newP.startDate!=="now"&&(
-                        <p className="text-xs text-blue-600 mt-1.5 font-semibold">
-                          → Contributes <strong>{Math.round(availabilityFraction(newP.startDate,WD)*100)}%</strong> of capacity over the current {period.label} planning period ({Math.round(availabilityFraction(newP.startDate,WD)*WD)} of {WD} working days)
-                        </p>
+                        <p className="text-xs text-blue-600 mt-1.5 font-semibold">→ Contributes <strong>{Math.round(availabilityFraction(newP.startDate,WD)*100)}%</strong> of capacity over {period.label} ({Math.round(availabilityFraction(newP.startDate,WD)*WD)} of {WD} working days)</p>
                       )}
                     </div>
                   </div>
                   <div className="flex gap-2"><button onClick={addPerson} className="px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-lg">✓ Add to Team</button><button onClick={()=>setShowAdd(false)} className="px-4 py-2 bg-gray-100 text-gray-600 text-xs font-semibold rounded-lg">Cancel</button></div>
                 </div>
               )}
-
               <div className="overflow-x-auto max-h-96 overflow-y-auto">
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 z-10">
                     <tr className="bg-gray-50 text-gray-500 uppercase border-b border-gray-200">
-                      <th className="px-3 py-2 text-left">Name</th>
-                      <th className="px-3 py-2 text-left">Role</th>
-                      <th className="px-3 py-2 text-center">Type</th>
-                      <th className="px-3 py-2 text-center">Div</th>
-                      <th className="px-3 py-2 text-center">Start Date</th>
-                      <th className="px-3 py-2 text-center">Cap %</th>
-                      <th className="px-3 py-2 text-center">Status</th>
-                      <th className="px-3 py-2 text-center">Actions</th>
+                      <th className="px-3 py-2 text-left">Name</th><th className="px-3 py-2 text-left">Role</th><th className="px-3 py-2 text-center">Type</th><th className="px-3 py-2 text-center">Div</th><th className="px-3 py-2 text-center">Start Date</th><th className="px-3 py-2 text-center">Cap %</th><th className="px-3 py-2 text-center">Status</th><th className="px-3 py-2 text-center">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -903,42 +952,27 @@ export default function App(){
                       const isPending=p.startDate&&p.startDate!=="now"&&new Date(p.startDate)>new Date();
                       return(
                         <tr key={p.id} className={`border-t border-gray-100 ${removed?"opacity-40 bg-red-50":isPending?"bg-amber-50":isEd?"bg-yellow-50":"hover:bg-gray-50"}`}>
-                          <td className="px-3 py-2"><span className={`font-semibold ${removed?"line-through text-gray-400":"text-gray-900"}`}>{isEd?<input value={editData.name||""} onChange={e=>setEditData(d=>({...d,name:e.target.value}))} className="border border-blue-300 rounded px-2 py-0.5 text-xs w-full"/>:p.name}</span></td>
+                          <td className="px-3 py-2">{isEd?<input value={editData.name||""} onChange={e=>setEditData(d=>({...d,name:e.target.value}))} className="border border-blue-300 rounded px-2 py-0.5 text-xs w-full"/>:<span className={`font-semibold ${removed?"line-through text-gray-400":"text-gray-900"}`}>{p.name}</span>}</td>
                           <td className="px-3 py-2">{isEd?<select value={editData.role||""} onChange={e=>setEditData(d=>({...d,role:e.target.value}))} className="border border-blue-300 rounded px-1 py-0.5 text-xs w-full bg-white">{ROLE_OPTIONS.map(r=><option key={r}>{r}</option>)}</select>:<span className="text-gray-600">{p.role}</span>}</td>
                           <td className="px-3 py-2 text-center">{isEd?<select value={editData.type||""} onChange={e=>setEditData(d=>({...d,type:e.target.value}))} className="border border-blue-300 rounded px-1 py-0.5 text-xs bg-white"><option>FTE</option><option>Freelance</option></select>:<span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${p.type==="FTE"?"bg-blue-100 text-blue-700":"bg-indigo-100 text-indigo-700"}`}>{p.type}</span>}</td>
                           <td className="px-3 py-2 text-center">{isEd?<select value={editData.division||""} onChange={e=>setEditData(d=>({...d,division:e.target.value}))} className="border border-blue-300 rounded px-1 py-0.5 text-xs bg-white">{["LDB","PPD","LLD","ALL"].map(d=><option key={d}>{d}</option>)}</select>:<span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{background:(DIV_COLORS[p.division]||"#6b7280")+"22",color:DIV_COLORS[p.division]||"#6b7280"}}>{p.division}</span>}</td>
-                          {/* Start Date column */}
                           <td className="px-3 py-2 text-center">
                             {isEd?(
-                              <select value={editData.startDate||"now"} onChange={e=>setEditData(d=>({...d,startDate:e.target.value}))}
-                                className="border border-blue-300 rounded px-1 py-0.5 text-xs bg-white w-28 focus:outline-none">
+                              <select value={editData.startDate||"now"} onChange={e=>setEditData(d=>({...d,startDate:e.target.value}))} className="border border-blue-300 rounded px-1 py-0.5 text-xs bg-white w-28 focus:outline-none">
                                 {WEEK_OPTIONS.map(w=>(<option key={w.value} value={w.value}>{w.label}</option>))}
                               </select>
                             ):(
-                              <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${isPending?"bg-amber-100 text-amber-700":"bg-gray-100 text-gray-500"}`}>
-                                {isPending?"⏳ ":""}{startLabel(p.startDate)}
-                              </span>
+                              <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${isPending?"bg-amber-100 text-amber-700":"bg-gray-100 text-gray-500"}`}>{isPending?"⏳ ":""}{startLabel(p.startDate)}</span>
                             )}
                           </td>
-                          {/* Capacity % column */}
-                          <td className="px-3 py-2 text-center">
-                            <span className={`text-xs font-bold ${frac>=0.9?"text-green-600":frac>=0.5?"text-amber-600":"text-red-500"}`}>
-                              {Math.round(frac*100)}%
-                            </span>
-                          </td>
+                          <td className="px-3 py-2 text-center"><span className={`text-xs font-bold ${frac>=0.9?"text-green-600":frac>=0.5?"text-amber-600":"text-red-500"}`}>{Math.round(frac*100)}%</span></td>
                           <td className="px-3 py-2 text-center">{isEd?<select value={editData.status||""} onChange={e=>setEditData(d=>({...d,status:e.target.value}))} className="border border-blue-300 rounded px-1 py-0.5 text-xs bg-white">{STATUS_OPTIONS.map(s=><option key={s}>{s}</option>)}</select>:<span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${removed?"bg-red-100 text-red-600":p.status==="To Hire"?"bg-yellow-100 text-yellow-700":"bg-green-100 text-green-700"}`}>{removed?"Removed":p.status}</span>}</td>
                           <td className="px-3 py-2"><div className="flex items-center justify-center gap-1">
                             {!removed&&!isEd&&<><button onClick={()=>startEdit(p)} className="px-2 py-1 text-xs font-semibold rounded bg-blue-50 text-blue-600 border border-blue-200">✎</button><button onClick={()=>removePerson(p.id)} className="px-2 py-1 text-xs font-semibold rounded bg-red-50 text-red-600 border border-red-200">✕</button></>}
                             {isEd&&(
-                              <div className="space-y-1">
-                                {/* Show capacity preview when editing */}
-                                {editData.startDate&&editData.startDate!=="now"&&new Date(editData.startDate)>new Date()&&(
-                                  <p className="text-xs text-amber-600 font-semibold text-center">{Math.round(availabilityFraction(editData.startDate,WD)*100)}% cap</p>
-                                )}
-                                <div className="flex gap-1">
-                                  <button onClick={saveEdit} className="px-2 py-1 text-xs font-semibold rounded bg-green-500 text-white">✓</button>
-                                  <button onClick={()=>setEditingId(null)} className="px-2 py-1 text-xs font-semibold rounded bg-gray-100 text-gray-600">✕</button>
-                                </div>
+                              <div className="flex flex-col items-center gap-1">
+                                {editData.startDate&&editData.startDate!=="now"&&new Date(editData.startDate)>new Date()&&<p className="text-xs text-amber-600 font-semibold">{Math.round(availabilityFraction(editData.startDate,WD)*100)}% cap</p>}
+                                <div className="flex gap-1"><button onClick={saveEdit} className="px-2 py-1 text-xs font-semibold rounded bg-green-500 text-white">✓</button><button onClick={()=>setEditingId(null)} className="px-2 py-1 text-xs font-semibold rounded bg-gray-100 text-gray-600">✕</button></div>
                               </div>
                             )}
                             {removed&&<button onClick={()=>restorePerson(p.id)} className="px-2 py-1 text-xs font-semibold rounded bg-green-50 text-green-600 border border-green-200">↩ Restore</button>}
@@ -956,8 +990,9 @@ export default function App(){
       </div>
 
       <p className="text-center text-xs text-gray-400 py-4">
-        L'Oréal eComm · {globalHC.des.total} designers · Asset cap: {totalAssetCap.toLocaleString()}/mo · PM concurrent: {projectsPerPM}/PM · {pendingStarters.length>0?`⏳ ${pendingStarters.length} pending starters · `:""}
-        {dbStatus==="connected"?"🟢 Supabase":"⚪ Offline"}
+        L'Oréal eComm · {globalHC.des.total} designers · Asset cap: {totalAssetCap.toLocaleString()}/mo · PM concurrent: {projectsPerPM}/PM
+        {pendingStarters.length>0?` · ⏳ ${pendingStarters.length} pending`:""}
+        · {dbStatus==="connected"?"🟢 Supabase":"⚪ Offline"}
       </p>
     </div>
   );
