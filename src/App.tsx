@@ -5,473 +5,369 @@ const SUPABASE_URL = "https://zezyfyyiijqvgplivrgl.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InplenlmeXlpaWpxdmdwbGl2cmdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM0MTUxODgsImV4cCI6MjA4ODk5MTE4OH0.mWZzylhc1b9AY_P4Zvrx2F5_P4mb1cmKOuXB2kqG_tc";
 const hasSupabase = !!(SUPABASE_URL && SUPABASE_KEY);
 
-async function sbSelect(t) {
-  if (!hasSupabase) return { data: null };
-  try {
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/${t}?select=*`, { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } });
-    return { data: await r.json() };
-  } catch { return { data: null }; }
-}
-async function sbUpsert(t, rows) {
-  if (!hasSupabase) return;
-  try {
-    await fetch(`${SUPABASE_URL}/rest/v1/${t}`, {
-      method: "POST",
-      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" },
-      body: JSON.stringify(Array.isArray(rows) ? rows : [rows])
-    });
-  } catch {}
-}
-async function sbPatch(t, f, d) {
-  if (!hasSupabase) return;
-  try {
-    await fetch(`${SUPABASE_URL}/rest/v1/${t}?${f}`, {
-      method: "PATCH",
-      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify(d)
-    });
-  } catch {}
-}
-async function sbDelete(t, f) {
-  if (!hasSupabase) return;
-  try {
-    await fetch(`${SUPABASE_URL}/rest/v1/${t}?${f}`, {
-      method: "DELETE",
-      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json" }
-    });
-  } catch {}
-}
+async function sbSelect(t){if(!hasSupabase)return{data:null};try{const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}?select=*`,{headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${SUPABASE_KEY}`}});return{data:await r.json()};}catch{return{data:null};}}
+async function sbUpsert(t,rows){if(!hasSupabase)return;try{await fetch(`${SUPABASE_URL}/rest/v1/${t}`,{method:"POST",headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${SUPABASE_KEY}`,"Content-Type":"application/json",Prefer:"resolution=merge-duplicates"},body:JSON.stringify(Array.isArray(rows)?rows:[rows])});}catch{}}
+async function sbPatch(t,f,d){if(!hasSupabase)return;try{await fetch(`${SUPABASE_URL}/rest/v1/${t}?${f}`,{method:"PATCH",headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${SUPABASE_KEY}`,"Content-Type":"application/json"},body:JSON.stringify(d)});}catch{}}
+async function sbDelete(t,f){if(!hasSupabase)return;try{await fetch(`${SUPABASE_URL}/rest/v1/${t}?${f}`,{method:"DELETE",headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${SUPABASE_KEY}`,"Content-Type":"application/json"}});}catch{}}
 
-const MONTH_LIST = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-const MONTH_IDX  = Object.fromEntries(MONTH_LIST.map((m,i)=>[m,i]));
-const GO_LIVE_OPTIONS = ["Off",...MONTH_LIST];
+const MONTH_LIST=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const MONTH_IDX=Object.fromEntries(MONTH_LIST.map((m,i)=>[m,i]));
+const GO_LIVE_OPTIONS=["Off",...MONTH_LIST];
+const HOURS_PER_DAY=8;
 
-function isAutoLive(div, month, cfg) {
-  const gl = cfg[div]?.goLiveMonth;
-  if (!gl || gl === "Off") return false;
-  return MONTH_IDX[month] >= MONTH_IDX[gl];
-}
-function blendedRate(div, month, cfg, qcRate, manualRate) {
-  if (!isAutoLive(div, month, cfg)) return manualRate;
-  const sp = cfg[div]?.simplePct ?? 0;
-  return Math.round(sp * qcRate + (1 - sp) * manualRate);
-}
+function isAutoLive(div,month,cfg){const gl=cfg[div]?.goLiveMonth;if(!gl||gl==="Off")return false;return MONTH_IDX[month]>=MONTH_IDX[gl];}
+function qcAssetsPerDay(m){return Math.round((HOURS_PER_DAY*60)/m);}
+function blendedRateFromQC(div,month,cfg,minsPerAsset,manualRate){if(!isAutoLive(div,month,cfg))return manualRate;const sp=cfg[div]?.simplePct??0;return Math.round(sp*qcAssetsPerDay(minsPerAsset)+(1-sp)*manualRate);}
 
-function generateWeeks() {
-  const out = [{ label:"Available Now", value:"now" }];
-  const cur = new Date("2026-01-05");
-  const end = new Date("2026-12-28");
-  while (cur <= end) {
-    out.push({ label:`w/c ${cur.getDate()} ${cur.toLocaleString("en-GB",{month:"short"})} '26`, value: cur.toISOString().split("T")[0] });
-    cur.setDate(cur.getDate() + 7);
-  }
-  return out;
-}
-const WEEK_OPTIONS = generateWeeks();
+function generateWeeks(){const out=[{label:"Available Now",value:"now"}];const cur=new Date("2026-01-05");const end=new Date("2026-12-28");while(cur<=end){out.push({label:`w/c ${cur.getDate()} ${cur.toLocaleString("en-GB",{month:"short"})} '26`,value:cur.toISOString().split("T")[0]});cur.setDate(cur.getDate()+7);}return out;}
+const WEEK_OPTIONS=generateWeeks();
 
-function availFrac(startDate, endDate, wd) {
-  let f = 1;
-  const today = new Date();
-  if (startDate && startDate !== "now") {
-    const s = new Date(startDate);
-    if (s > today) f = Math.min(f, Math.max(0, (wd - (s-today)/86400000*(5/7)) / wd));
-  }
-  if (endDate && endDate !== "never") {
-    const e = new Date(endDate);
-    if (e > today) f = Math.min(f, Math.max(0, (e-today)/86400000*(5/7) / wd));
-  }
-  return Math.max(0, Math.min(1, f));
-}
-function startLbl(v) { return (!v||v==="now")?"Now":(WEEK_OPTIONS.find(w=>w.value===v)?.label??v); }
-function endLbl(v)   { return (!v||v==="never")?"—":(WEEK_OPTIONS.find(w=>w.value===v)?.label??v); }
+function availFrac(s,e,wd){let f=1;const t=new Date();if(s&&s!=="now"){const sd=new Date(s);if(sd>t)f=Math.min(f,Math.max(0,(wd-(sd-t)/86400000*(5/7))/wd));}if(e&&e!=="never"){const ed=new Date(e);if(ed>t)f=Math.min(f,Math.max(0,(ed-t)/86400000*(5/7)/wd));}return Math.max(0,Math.min(1,f));}
+function startLbl(v){return(!v||v==="now")?"Now":(WEEK_OPTIONS.find(w=>w.value===v)?.label??v);}
+function endLbl(v){return(!v||v==="never")?"—":(WEEK_OPTIONS.find(w=>w.value===v)?.label??v);}
 
-const FM = [
-  { month:"Jan", ldb:3865,  ppd:3097,  lld:3481,  gt:10443, weeksInMonth:4, weeklyForecast:162, monthlyForecast:648,  permPMMonthly:620,  flyPMMonthly:0,   ldbProj:54,  ppdProj:50,  lldProj:58  },
-  { month:"Feb", ldb:1953,  ppd:1695,  lld:3306,  gt:6954,  weeksInMonth:4, weeklyForecast:85,  monthlyForecast:340,  permPMMonthly:570,  flyPMMonthly:120, ldbProj:23,  ppdProj:20,  lldProj:42  },
-  { month:"Mar", ldb:2548,  ppd:2357,  lld:5348,  gt:10253, weeksInMonth:5, weeklyForecast:272, monthlyForecast:1360, permPMMonthly:1360, flyPMMonthly:380, ldbProj:67,  ppdProj:62,  lldProj:143 },
-  { month:"Apr", ldb:2855,  ppd:2742,  lld:11230, gt:16827, weeksInMonth:4, weeklyForecast:391, monthlyForecast:1564, permPMMonthly:1647, flyPMMonthly:380, ldbProj:66,  ppdProj:64,  lldProj:261 },
-  { month:"May", ldb:2688,  ppd:2796,  lld:11492, gt:16976, weeksInMonth:4, weeklyForecast:395, monthlyForecast:1580, permPMMonthly:1988, flyPMMonthly:0,   ldbProj:62,  ppdProj:65,  lldProj:268 },
-  { month:"Jun", ldb:4257,  ppd:4267,  lld:16748, gt:25272, weeksInMonth:5, weeklyForecast:588, monthlyForecast:2940, permPMMonthly:3038, flyPMMonthly:450, ldbProj:99,  ppdProj:99,  lldProj:390 },
-  { month:"Jul", ldb:4334,  ppd:4237,  lld:15737, gt:24308, weeksInMonth:4, weeklyForecast:565, monthlyForecast:2260, permPMMonthly:2432, flyPMMonthly:300, ldbProj:101, ppdProj:99,  lldProj:365 },
-  { month:"Aug", ldb:724,   ppd:777,   lld:3223,  gt:4724,  weeksInMonth:4, weeklyForecast:140, monthlyForecast:560,  permPMMonthly:2432, flyPMMonthly:0,   ldbProj:21,  ppdProj:23,  lldProj:96  },
-  { month:"Sep", ldb:3326,  ppd:3234,  lld:11774, gt:18334, weeksInMonth:4, weeklyForecast:420, monthlyForecast:1680, permPMMonthly:2432, flyPMMonthly:0,   ldbProj:76,  ppdProj:74,  lldProj:270 },
-  { month:"Oct", ldb:4034,  ppd:3950,  lld:14471, gt:22455, weeksInMonth:4, weeklyForecast:480, monthlyForecast:1920, permPMMonthly:2432, flyPMMonthly:0,   ldbProj:86,  ppdProj:84,  lldProj:310 },
-  { month:"Nov", ldb:2993,  ppd:2949,  lld:10902, gt:16844, weeksInMonth:4, weeklyForecast:380, monthlyForecast:1520, permPMMonthly:2432, flyPMMonthly:0,   ldbProj:67,  ppdProj:66,  lldProj:247 },
-  { month:"Dec", ldb:2285,  ppd:2251,  lld:8336,  gt:12872, weeksInMonth:4, weeklyForecast:290, monthlyForecast:1160, permPMMonthly:2432, flyPMMonthly:0,   ldbProj:51,  ppdProj:50,  lldProj:189 },
+const FM=[
+  {month:"Jan",ldb:3865,ppd:3097,lld:3481,gt:10443,weeksInMonth:4,weeklyForecast:162,monthlyForecast:648,permPMMonthly:620,flyPMMonthly:0,ldbProj:54,ppdProj:50,lldProj:58},
+  {month:"Feb",ldb:1953,ppd:1695,lld:3306,gt:6954,weeksInMonth:4,weeklyForecast:85,monthlyForecast:340,permPMMonthly:570,flyPMMonthly:120,ldbProj:23,ppdProj:20,lldProj:42},
+  {month:"Mar",ldb:2548,ppd:2357,lld:5348,gt:10253,weeksInMonth:5,weeklyForecast:272,monthlyForecast:1360,permPMMonthly:1360,flyPMMonthly:380,ldbProj:67,ppdProj:62,lldProj:143},
+  {month:"Apr",ldb:2855,ppd:2742,lld:11230,gt:16827,weeksInMonth:4,weeklyForecast:391,monthlyForecast:1564,permPMMonthly:1647,flyPMMonthly:380,ldbProj:66,ppdProj:64,lldProj:261},
+  {month:"May",ldb:2688,ppd:2796,lld:11492,gt:16976,weeksInMonth:4,weeklyForecast:395,monthlyForecast:1580,permPMMonthly:1988,flyPMMonthly:0,ldbProj:62,ppdProj:65,lldProj:268},
+  {month:"Jun",ldb:4257,ppd:4267,lld:16748,gt:25272,weeksInMonth:5,weeklyForecast:588,monthlyForecast:2940,permPMMonthly:3038,flyPMMonthly:450,ldbProj:99,ppdProj:99,lldProj:390},
+  {month:"Jul",ldb:4334,ppd:4237,lld:15737,gt:24308,weeksInMonth:4,weeklyForecast:565,monthlyForecast:2260,permPMMonthly:2430,flyPMMonthly:300,ldbProj:101,ppdProj:99,lldProj:365},
+  {month:"Aug",ldb:724,ppd:777,lld:3223,gt:4724,weeksInMonth:4,weeklyForecast:140,monthlyForecast:560,permPMMonthly:2432,flyPMMonthly:0,ldbProj:21,ppdProj:23,lldProj:96},
+  {month:"Sep",ldb:3326,ppd:3234,lld:11774,gt:18334,weeksInMonth:4,weeklyForecast:420,monthlyForecast:1680,permPMMonthly:2432,flyPMMonthly:0,ldbProj:76,ppdProj:74,lldProj:270},
+  {month:"Oct",ldb:4034,ppd:3950,lld:14471,gt:22455,weeksInMonth:4,weeklyForecast:480,monthlyForecast:1920,permPMMonthly:2432,flyPMMonthly:0,ldbProj:86,ppdProj:84,lldProj:310},
+  {month:"Nov",ldb:2993,ppd:2949,lld:10902,gt:16844,weeksInMonth:4,weeklyForecast:380,monthlyForecast:1520,permPMMonthly:2432,flyPMMonthly:0,ldbProj:67,ppdProj:66,lldProj:247},
+  {month:"Dec",ldb:2285,ppd:2251,lld:8336,gt:12872,weeksInMonth:4,weeklyForecast:290,monthlyForecast:1160,permPMMonthly:2432,flyPMMonthly:0,ldbProj:51,ppdProj:50,lldProj:189},
 ];
 
-const PERIODS = [
-  { label:"1 Month",   months:1,  workingDays:21  },
-  { label:"3 Months",  months:3,  workingDays:63  },
-  { label:"6 Months",  months:6,  workingDays:126 },
-  { label:"12 Months", months:12, workingDays:252 },
+const PERIODS=[{label:"1 Month",months:1,workingDays:21},{label:"3 Months",months:3,workingDays:63},{label:"6 Months",months:6,workingDays:126},{label:"12 Months",months:12,workingDays:252}];
+
+const DEFAULT_ROSTER=[
+  {id:1,name:"Ruchika Saini",role:"Project Manager",family:"PM / Delivery",type:"FTE",division:"LLD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:2,name:"Carly Josias",role:"Project Manager",family:"PM / Delivery",type:"FTE",division:"LLD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:3,name:"Busi Nako",role:"Project Manager",family:"PM / Delivery",type:"FTE",division:"LLD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:4,name:"Seatile Molotsane",role:"Project Manager",family:"PM / Delivery",type:"FTE",division:"LLD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:5,name:"Abhishek Khare",role:"Project Manager",family:"PM / Delivery",type:"FTE",division:"LLD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:6,name:"Sriza",role:"Project Manager",family:"PM / Delivery",type:"FTE",division:"LLD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:7,name:"Linda",role:"Project Manager",family:"PM / Delivery",type:"FTE",division:"LLD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:8,name:"Veena Yadav",role:"Project Manager",family:"PM / Delivery",type:"FTE",division:"LLD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:9,name:"Deepanjan Sarkar",role:"Project Manager",family:"PM / Delivery",type:"FTE",division:"LLD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:10,name:"Minal Dhumak",role:"Project Manager",family:"PM / Delivery",type:"FTE",division:"LLD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:11,name:"Vaishali Singh",role:"Project Manager",family:"PM / Delivery",type:"FTE",division:"LLD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:12,name:"Meghav Bhatt",role:"Project Manager",family:"PM / Delivery",type:"FTE",division:"LLD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:13,name:"Priya Chaurasia",role:"Project Manager",family:"PM / Delivery",type:"FTE",division:"LLD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:14,name:"Mansi Vasani",role:"Project Manager",family:"PM / Delivery",type:"FTE",division:"LLD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:15,name:"Ankit Dobhal",role:"Project Manager",family:"PM / Delivery",type:"FTE",division:"LLD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:16,name:"Robin Singh",role:"Project Manager",family:"PM / Delivery",type:"FTE",division:"LLD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:19,name:"Keerthika Manogharan",role:"Project Manager",family:"PM / Delivery",type:"FTE",division:"LDB",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:20,name:"Mernoly Simba",role:"Project Manager",family:"PM / Delivery",type:"FTE",division:"LDB",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:21,name:"Eva Sachdeva",role:"Project Manager",family:"PM / Delivery",type:"FTE",division:"LDB",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:22,name:"Sahil Pujari",role:"Project Manager",family:"PM / Delivery",type:"FTE",division:"LDB",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:23,name:"Sarah",role:"Project Manager",family:"PM / Delivery",type:"FTE",division:"LDB",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:24,name:"Ankita Hazra",role:"Project Manager",family:"PM / Delivery",type:"FTE",division:"LDB",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:25,name:"Ashwini Patil",role:"Project Manager",family:"PM / Delivery",type:"FTE",division:"LDB",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:26,name:"Jahanvi Jain",role:"Project Manager",family:"PM / Delivery",type:"FTE",division:"PPD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:27,name:"Jaimin",role:"Project Manager",family:"PM / Delivery",type:"FTE",division:"PPD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:28,name:"Meghna Moza",role:"Project Manager",family:"PM / Delivery",type:"FTE",division:"PPD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:29,name:"Lisa Peignon",role:"Project Manager",family:"PM / Delivery",type:"FTE",division:"PPD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:30,name:"Nishtha Sharma",role:"Project Manager",family:"PM / Delivery",type:"FTE",division:"PPD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:31,name:"Aniket Sawant",role:"Project Manager",family:"PM / Delivery",type:"FTE",division:"PPD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:32,name:"Megha Sarin",role:"Project Manager",family:"PM / Delivery",type:"FTE",division:"PPD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:33,name:"Anushka Sariya",role:"Project Manager",family:"PM / Delivery",type:"FTE",division:"PPD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:40,name:"Medhavi Thakur",role:"Project Manager",family:"PM / Delivery",type:"Freelance",division:"LLD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:41,name:"Mahima Bhatia",role:"Project Manager",family:"PM / Delivery",type:"Freelance",division:"LLD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:42,name:"Mbuluelo Jili",role:"Project Manager",family:"PM / Delivery",type:"Freelance",division:"LLD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:43,name:"Thando Ndashe",role:"Project Manager",family:"PM / Delivery",type:"Freelance",division:"LLD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:44,name:"Raghav Agarwal",role:"Project Manager",family:"PM / Delivery",type:"Freelance",division:"LLD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:45,name:"Sanjana",role:"Project Manager",family:"PM / Delivery",type:"Freelance",division:"LLD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:60,name:"Sneha Pathak",role:"Integrated Designer",family:"Creative / Design",type:"FTE",division:"LDB",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:61,name:"Akshat Bhatnagar",role:"Integrated Designer",family:"Creative / Design",type:"FTE",division:"LDB",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:62,name:"Denvour Dcruz",role:"Integrated Designer",family:"Creative / Design",type:"FTE",division:"LDB",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:63,name:"Cynthia",role:"Integrated Designer",family:"Creative / Design",type:"FTE",division:"LDB",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:64,name:"Antony Varghese",role:"Integrated Designer",family:"Creative / Design",type:"FTE",division:"LDB",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:65,name:"Deepshika Das",role:"Integrated Designer",family:"Creative / Design",type:"FTE",division:"PPD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:66,name:"Kushagra Tayal",role:"Integrated Designer",family:"Creative / Design",type:"FTE",division:"PPD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:67,name:"Aadesh Khale",role:"Integrated Designer",family:"Creative / Design",type:"FTE",division:"PPD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:68,name:"Monika Singh",role:"Integrated Designer",family:"Creative / Design",type:"FTE",division:"PPD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:69,name:"Lindsay",role:"Integrated Designer",family:"Creative / Design",type:"FTE",division:"PPD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:70,name:"Annu Singh",role:"Integrated Designer",family:"Creative / Design",type:"FTE",division:"PPD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:71,name:"Sreekumar V S",role:"Integrated Designer",family:"Creative / Design",type:"FTE",division:"LLD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:72,name:"Rupali Patel",role:"Integrated Designer",family:"Creative / Design",type:"FTE",division:"LLD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:73,name:"Liam Chetty",role:"Integrated Designer",family:"Creative / Design",type:"FTE",division:"LLD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:74,name:"Vedant Rode",role:"Integrated Designer",family:"Creative / Design",type:"FTE",division:"LLD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:75,name:"Ameya Thakur",role:"Integrated Designer",family:"Creative / Design",type:"FTE",division:"LLD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:76,name:"Vyomica Vasistha",role:"Integrated Designer",family:"Creative / Design",type:"FTE",division:"LLD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:77,name:"Rhea Seth",role:"Integrated Designer",family:"Creative / Design",type:"FTE",division:"LLD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:78,name:"Chinmay Sawant",role:"Integrated Designer",family:"Creative / Design",type:"FTE",division:"LLD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:79,name:"Bhakti Doshi",role:"Integrated Designer",family:"Creative / Design",type:"FTE",division:"LLD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:80,name:"Nate Mzobe",role:"Integrated Designer",family:"Creative / Design",type:"FTE",division:"LLD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:81,name:"Narelle",role:"Integrated Designer",family:"Creative / Design",type:"FTE",division:"LLD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:82,name:"Gabriella Bakjai",role:"Integrated Designer",family:"Creative / Design",type:"FTE",division:"LLD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:83,name:"Akshaya K",role:"Integrated Designer",family:"Creative / Design",type:"FTE",division:"LLD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:100,name:"Kah Yean",role:"Integrated Designer",family:"Creative / Design",type:"Freelance",division:"LDB",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:101,name:"Prajakta Giri",role:"Integrated Designer",family:"Creative / Design",type:"Freelance",division:"LDB",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:102,name:"Noah Lee",role:"Integrated Designer",family:"Creative / Design",type:"Freelance",division:"LDB",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:103,name:"Siva Kumar",role:"Integrated Designer",family:"Creative / Design",type:"Freelance",division:"LDB",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:104,name:"Balaji Kamraj",role:"Integrated Designer",family:"Creative / Design",type:"Freelance",division:"LDB",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:105,name:"Naveen Kumar",role:"Integrated Designer",family:"Creative / Design",type:"Freelance",division:"LDB",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:106,name:"Chinna Anto",role:"Integrated Designer",family:"Creative / Design",type:"Freelance",division:"LDB",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:107,name:"Michael Cheang",role:"Integrated Designer",family:"Creative / Design",type:"Freelance",division:"LDB",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:108,name:"Eric Ting",role:"Integrated Designer",family:"Creative / Design",type:"Freelance",division:"LDB",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:109,name:"Zwivhuya Maise",role:"Integrated Designer",family:"Creative / Design",type:"Freelance",division:"LLD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:110,name:"Jayce Davin",role:"Integrated Designer",family:"Creative / Design",type:"Freelance",division:"LLD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:111,name:"Michelle Ng",role:"Integrated Designer",family:"Creative / Design",type:"Freelance",division:"LLD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:112,name:"Leke Ho",role:"Integrated Designer",family:"Creative / Design",type:"Freelance",division:"LLD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:113,name:"Farid",role:"Integrated Designer",family:"Creative / Design",type:"Freelance",division:"PPD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:114,name:"Rajni Goswami",role:"Integrated Designer",family:"Creative / Design",type:"Freelance",division:"PPD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:115,name:"Akanksha Gupta",role:"Integrated Designer",family:"Creative / Design",type:"Freelance",division:"PPD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:116,name:"Jyoti Negi",role:"Integrated Designer",family:"Creative / Design",type:"Freelance",division:"PPD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:117,name:"Mohd Anas Siddiqui",role:"Integrated Designer",family:"Creative / Design",type:"Freelance",division:"PPD",status:"Active",removed:false,startDate:"now",endDate:"never"},
+  {id:118,name:"Diksha Panchal",role:"Integrated Designer",family:"Creative / Design",type:"Freelance",division:"PPD",status:"Active",removed:false,startDate:"now",endDate:"never"},
 ];
 
-const DEFAULT_ROSTER = [
-  { id:1,  name:"Ruchika Saini",        role:"Project Manager", family:"PM / Delivery", type:"FTE",       division:"LLD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:2,  name:"Carly Josias",         role:"Project Manager", family:"PM / Delivery", type:"FTE",       division:"LLD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:3,  name:"Busi Nako",            role:"Project Manager", family:"PM / Delivery", type:"FTE",       division:"LLD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:4,  name:"Seatile Molotsane",    role:"Project Manager", family:"PM / Delivery", type:"FTE",       division:"LLD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:5,  name:"Abhishek Khare",       role:"Project Manager", family:"PM / Delivery", type:"FTE",       division:"LLD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:6,  name:"Sriza",                role:"Project Manager", family:"PM / Delivery", type:"FTE",       division:"LLD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:7,  name:"Linda",                role:"Project Manager", family:"PM / Delivery", type:"FTE",       division:"LLD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:8,  name:"Veena Yadav",          role:"Project Manager", family:"PM / Delivery", type:"FTE",       division:"LLD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:9,  name:"Deepanjan Sarkar",     role:"Project Manager", family:"PM / Delivery", type:"FTE",       division:"LLD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:10, name:"Minal Dhumak",         role:"Project Manager", family:"PM / Delivery", type:"FTE",       division:"LLD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:11, name:"Vaishali Singh",       role:"Project Manager", family:"PM / Delivery", type:"FTE",       division:"LLD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:12, name:"Meghav Bhatt",         role:"Project Manager", family:"PM / Delivery", type:"FTE",       division:"LLD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:13, name:"Priya Chaurasia",      role:"Project Manager", family:"PM / Delivery", type:"FTE",       division:"LLD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:14, name:"Mansi Vasani",         role:"Project Manager", family:"PM / Delivery", type:"FTE",       division:"LLD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:15, name:"Ankit Dobhal",         role:"Project Manager", family:"PM / Delivery", type:"FTE",       division:"LLD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:16, name:"Robin Singh",          role:"Project Manager", family:"PM / Delivery", type:"FTE",       division:"LLD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:19, name:"Keerthika Manogharan", role:"Project Manager", family:"PM / Delivery", type:"FTE",       division:"LDB", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:20, name:"Mernoly Simba",        role:"Project Manager", family:"PM / Delivery", type:"FTE",       division:"LDB", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:21, name:"Eva Sachdeva",         role:"Project Manager", family:"PM / Delivery", type:"FTE",       division:"LDB", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:22, name:"Sahil Pujari",         role:"Project Manager", family:"PM / Delivery", type:"FTE",       division:"LDB", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:23, name:"Sarah",                role:"Project Manager", family:"PM / Delivery", type:"FTE",       division:"LDB", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:24, name:"Ankita Hazra",         role:"Project Manager", family:"PM / Delivery", type:"FTE",       division:"LDB", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:25, name:"Ashwini Patil",        role:"Project Manager", family:"PM / Delivery", type:"FTE",       division:"LDB", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:26, name:"Jahanvi Jain",         role:"Project Manager", family:"PM / Delivery", type:"FTE",       division:"PPD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:27, name:"Jaimin",               role:"Project Manager", family:"PM / Delivery", type:"FTE",       division:"PPD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:28, name:"Meghna Moza",          role:"Project Manager", family:"PM / Delivery", type:"FTE",       division:"PPD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:29, name:"Lisa Peignon",         role:"Project Manager", family:"PM / Delivery", type:"FTE",       division:"PPD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:30, name:"Nishtha Sharma",       role:"Project Manager", family:"PM / Delivery", type:"FTE",       division:"PPD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:31, name:"Aniket Sawant",        role:"Project Manager", family:"PM / Delivery", type:"FTE",       division:"PPD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:32, name:"Megha Sarin",          role:"Project Manager", family:"PM / Delivery", type:"FTE",       division:"PPD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:33, name:"Anushka Sariya",       role:"Project Manager", family:"PM / Delivery", type:"FTE",       division:"PPD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:40, name:"Medhavi Thakur",       role:"Project Manager", family:"PM / Delivery", type:"Freelance", division:"LLD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:41, name:"Mahima Bhatia",        role:"Project Manager", family:"PM / Delivery", type:"Freelance", division:"LLD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:42, name:"Mbuluelo Jili",        role:"Project Manager", family:"PM / Delivery", type:"Freelance", division:"LLD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:43, name:"Thando Ndashe",        role:"Project Manager", family:"PM / Delivery", type:"Freelance", division:"LLD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:44, name:"Raghav Agarwal",       role:"Project Manager", family:"PM / Delivery", type:"Freelance", division:"LLD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:45, name:"Sanjana",              role:"Project Manager", family:"PM / Delivery", type:"Freelance", division:"LLD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:60, name:"Sneha Pathak",         role:"Integrated Designer", family:"Creative / Design", type:"FTE",       division:"LDB", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:61, name:"Akshat Bhatnagar",     role:"Integrated Designer", family:"Creative / Design", type:"FTE",       division:"LDB", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:62, name:"Denvour Dcruz",        role:"Integrated Designer", family:"Creative / Design", type:"FTE",       division:"LDB", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:63, name:"Cynthia",              role:"Integrated Designer", family:"Creative / Design", type:"FTE",       division:"LDB", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:64, name:"Antony Varghese",      role:"Integrated Designer", family:"Creative / Design", type:"FTE",       division:"LDB", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:65, name:"Deepshika Das",        role:"Integrated Designer", family:"Creative / Design", type:"FTE",       division:"PPD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:66, name:"Kushagra Tayal",       role:"Integrated Designer", family:"Creative / Design", type:"FTE",       division:"PPD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:67, name:"Aadesh Khale",         role:"Integrated Designer", family:"Creative / Design", type:"FTE",       division:"PPD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:68, name:"Monika Singh",         role:"Integrated Designer", family:"Creative / Design", type:"FTE",       division:"PPD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:69, name:"Lindsay",              role:"Integrated Designer", family:"Creative / Design", type:"FTE",       division:"PPD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:70, name:"Annu Singh",           role:"Integrated Designer", family:"Creative / Design", type:"FTE",       division:"PPD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:71, name:"Sreekumar V S",        role:"Integrated Designer", family:"Creative / Design", type:"FTE",       division:"LLD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:72, name:"Rupali Patel",         role:"Integrated Designer", family:"Creative / Design", type:"FTE",       division:"LLD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:73, name:"Liam Chetty",          role:"Integrated Designer", family:"Creative / Design", type:"FTE",       division:"LLD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:74, name:"Vedant Rode",          role:"Integrated Designer", family:"Creative / Design", type:"FTE",       division:"LLD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:75, name:"Ameya Thakur",         role:"Integrated Designer", family:"Creative / Design", type:"FTE",       division:"LLD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:76, name:"Vyomica Vasistha",     role:"Integrated Designer", family:"Creative / Design", type:"FTE",       division:"LLD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:77, name:"Rhea Seth",            role:"Integrated Designer", family:"Creative / Design", type:"FTE",       division:"LLD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:78, name:"Chinmay Sawant",       role:"Integrated Designer", family:"Creative / Design", type:"FTE",       division:"LLD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:79, name:"Bhakti Doshi",         role:"Integrated Designer", family:"Creative / Design", type:"FTE",       division:"LLD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:80, name:"Nate Mzobe",           role:"Integrated Designer", family:"Creative / Design", type:"FTE",       division:"LLD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:81, name:"Narelle",              role:"Integrated Designer", family:"Creative / Design", type:"FTE",       division:"LLD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:82, name:"Gabriella Bakjai",     role:"Integrated Designer", family:"Creative / Design", type:"FTE",       division:"LLD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:83, name:"Akshaya K",            role:"Integrated Designer", family:"Creative / Design", type:"FTE",       division:"LLD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:100,name:"Kah Yean",             role:"Integrated Designer", family:"Creative / Design", type:"Freelance", division:"LDB", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:101,name:"Prajakta Giri",        role:"Integrated Designer", family:"Creative / Design", type:"Freelance", division:"LDB", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:102,name:"Noah Lee",             role:"Integrated Designer", family:"Creative / Design", type:"Freelance", division:"LDB", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:103,name:"Siva Kumar",           role:"Integrated Designer", family:"Creative / Design", type:"Freelance", division:"LDB", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:104,name:"Balaji Kamraj",        role:"Integrated Designer", family:"Creative / Design", type:"Freelance", division:"LDB", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:105,name:"Naveen Kumar",         role:"Integrated Designer", family:"Creative / Design", type:"Freelance", division:"LDB", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:106,name:"Chinna Anto",          role:"Integrated Designer", family:"Creative / Design", type:"Freelance", division:"LDB", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:107,name:"Michael Cheang",       role:"Integrated Designer", family:"Creative / Design", type:"Freelance", division:"LDB", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:108,name:"Eric Ting",            role:"Integrated Designer", family:"Creative / Design", type:"Freelance", division:"LDB", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:109,name:"Zwivhuya Maise",       role:"Integrated Designer", family:"Creative / Design", type:"Freelance", division:"LLD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:110,name:"Jayce Davin",          role:"Integrated Designer", family:"Creative / Design", type:"Freelance", division:"LLD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:111,name:"Michelle Ng",          role:"Integrated Designer", family:"Creative / Design", type:"Freelance", division:"LLD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:112,name:"Leke Ho",              role:"Integrated Designer", family:"Creative / Design", type:"Freelance", division:"LLD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:113,name:"Farid",                role:"Integrated Designer", family:"Creative / Design", type:"Freelance", division:"PPD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:114,name:"Rajni Goswami",        role:"Integrated Designer", family:"Creative / Design", type:"Freelance", division:"PPD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:115,name:"Akanksha Gupta",       role:"Integrated Designer", family:"Creative / Design", type:"Freelance", division:"PPD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:116,name:"Jyoti Negi",           role:"Integrated Designer", family:"Creative / Design", type:"Freelance", division:"PPD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:117,name:"Mohd Anas Siddiqui",   role:"Integrated Designer", family:"Creative / Design", type:"Freelance", division:"PPD", status:"Active", removed:false, startDate:"now", endDate:"never" },
-  { id:118,name:"Diksha Panchal",       role:"Integrated Designer", family:"Creative / Design", type:"Freelance", division:"PPD", status:"Active", removed:false, startDate:"now", endDate:"never" },
+const DEFAULT_MIX=[
+  {id:"cp-simple",LDB:2,PPD:2,LLD:3,assetsLDB:60,assetsPPD:50,assetsLLD:150,autoEligible:true},
+  {id:"cp-adaptation",LDB:3,PPD:3,LLD:4,assetsLDB:40,assetsPPD:35,assetsLLD:50,autoEligible:false},
+  {id:"cp-creation",LDB:1,PPD:1,LLD:1,assetsLDB:12,assetsPPD:10,assetsLLD:15,autoEligible:false},
+  {id:"retailer",LDB:1,PPD:1,LLD:1,assetsLDB:30,assetsPPD:25,assetsLLD:40,autoEligible:true},
+  {id:"gp-eventing",LDB:1,PPD:1,LLD:1,assetsLDB:20,assetsPPD:20,assetsLLD:25,autoEligible:false},
+  {id:"gp-pdp",LDB:1,PPD:1,LLD:1,assetsLDB:15,assetsPPD:15,assetsLLD:20,autoEligible:false},
+  {id:"lp-eventing",LDB:2,PPD:2,LLD:3,assetsLDB:35,assetsPPD:30,assetsLLD:45,autoEligible:false},
+  {id:"lp-pdp",LDB:1,PPD:1,LLD:1,assetsLDB:20,assetsPPD:18,assetsLLD:25,autoEligible:false},
+  {id:"urgent",LDB:1,PPD:1,LLD:2,assetsLDB:25,assetsPPD:20,assetsLLD:30,autoEligible:true},
 ];
 
-const DEFAULT_MIX = [
-  { id:"cp-simple",     LDB:2, PPD:2, LLD:3, assetsLDB:60,  assetsPPD:50,  assetsLLD:150, autoEligible:true  },
-  { id:"cp-adaptation", LDB:3, PPD:3, LLD:4, assetsLDB:40,  assetsPPD:35,  assetsLLD:50,  autoEligible:false },
-  { id:"cp-creation",   LDB:1, PPD:1, LLD:1, assetsLDB:12,  assetsPPD:10,  assetsLLD:15,  autoEligible:false },
-  { id:"retailer",      LDB:1, PPD:1, LLD:1, assetsLDB:30,  assetsPPD:25,  assetsLLD:40,  autoEligible:true  },
-  { id:"gp-eventing",   LDB:1, PPD:1, LLD:1, assetsLDB:20,  assetsPPD:20,  assetsLLD:25,  autoEligible:false },
-  { id:"gp-pdp",        LDB:1, PPD:1, LLD:1, assetsLDB:15,  assetsPPD:15,  assetsLLD:20,  autoEligible:false },
-  { id:"lp-eventing",   LDB:2, PPD:2, LLD:3, assetsLDB:35,  assetsPPD:30,  assetsLLD:45,  autoEligible:false },
-  { id:"lp-pdp",        LDB:1, PPD:1, LLD:1, assetsLDB:20,  assetsPPD:18,  assetsLLD:25,  autoEligible:false },
-  { id:"urgent",        LDB:1, PPD:1, LLD:2, assetsLDB:25,  assetsPPD:20,  assetsLLD:30,  autoEligible:true  },
+const ROLE_OPTIONS=["Project Manager","Project Manager (FR)","Integrated Designer","Managing Director","Group Account Director","Account Director","Account Manager","Programme Lead","Delivery Lead","Project Director","Division Project Lead","Studio Operations Lead","Creative Lead","Automation & Tech Lead","GenAI Creative Director","Art Director","Copywriter","Motion Designer","Automation Designer/Editor","Director Global Client Ecom","Data Analyst/Engineer","Content Lead","Content Manager","Data Wrangler"];
+const FAMILY_OPTIONS=["PM / Delivery","Creative / Design","Syndication / Data"];
+const STATUS_OPTIONS=["Active","To Hire","On Hold"];
+const DC={LDB:"#F59E0B",PPD:"#8B5CF6",LLD:"#3B82F6"};
+const DIVS=["LDB","PPD","LLD"];
+const ASSET_KEY={LDB:"assetsLDB",PPD:"assetsPPD",LLD:"assetsLLD"};
+const PROD_DAYS={Simple:{"0-30":4,"30-50":7,"50-100":10,"100-200":18,"200-300":28,"300-500":42},Complex:{"0-30":5,"30-50":9,"50-100":13,"100-200":22,"200-300":34,"300-500":52},Creation:{"0-30":6,"30-50":11,"50-100":15,"100-200":26,"200-300":40,"300-500":62},Bespoke:{"0-30":10,"30-50":18,"50-100":25,"100-200":42,"200-300":65,"300-500":100}};
+const PROD_REVS={Simple:1,Complex:2,Creation:4,Bespoke:4};
+const OPERA_DAYS={"0-30":1,"30-50":1,"50-100":2,"100-200":3,"200-300":5,"300-500":8};
+const SYND_DAYS={Simple:{"1-5 EANs":4,"5-10 EANs":6,"10-15 EANs":8},Mid:{"1-5 EANs":6,"5-10 EANs":9,"10-15 EANs":12},Complex:{"1-5 EANs":10,"5-10 EANs":15,"10-15 EANs":20}};
+const ASSET_BANDS=["0-30","30-50","50-100","100-200","200-300","300-500"];
+const PT_BASE=[
+  {id:"cp-simple",label:"Country Pull – Simple",stages:[false,false,false,true,true,true,true,false],color:"#3B82F6"},
+  {id:"cp-adaptation",label:"Country Pull – Adaptation",stages:[false,true,false,true,true,true,true,false],color:"#6366F1"},
+  {id:"cp-creation",label:"Country Pull – Creation",stages:[true,true,false,true,true,true,true,false],color:"#8B5CF6"},
+  {id:"retailer",label:"Country Retailer Request",stages:[false,false,false,false,false,false,false,true],color:"#10B981"},
+  {id:"gp-eventing",label:"Global Push – Eventing",stages:[false,true,true,false,false,false,true,false],color:"#F59E0B"},
+  {id:"gp-pdp",label:"Global Push – PDP",stages:[false,true,true,false,false,false,true,false],color:"#F97316"},
+  {id:"lp-eventing",label:"Local Push – Eventing",stages:[false,false,false,true,true,true,true,true],color:"#EF4444"},
+  {id:"lp-pdp",label:"Local Push – PDP",stages:[false,false,false,true,true,true,true,true],color:"#EC4899"},
+  {id:"urgent",label:"Urgent Brief",stages:[false,false,false,false,false,true,true,false],color:"#14B8A6"},
+];
+const SK=["missingDMI","mastering","globalRollout","translation","production","operaUpload","syndication"];
+const SK_IDX={missingDMI:[0],mastering:[1],globalRollout:[2],translation:[3,4],production:[5],operaUpload:[6],syndication:[7]};
+const STAGE_META=[
+  {key:"missingDMI",label:"Missing DMI Asset Creation",desc:"Creation complexity · market approval & revision"},
+  {key:"mastering",label:"Mastering / Copy Creation",desc:"Mid complexity · re-master & copy extraction"},
+  {key:"globalRollout",label:"Global Rollout Invitation",desc:"Country rollout scheduling"},
+  {key:"translation",label:"Translation",desc:"Salsify PDP + Asset (concurrent)"},
+  {key:"production",label:"Production",desc:"Complexity × asset volume · revision rounds"},
+  {key:"operaUpload",label:"Opera Upload",desc:"Upload assets to Opera DAM"},
+  {key:"syndication",label:"Syndication",desc:"Salsify enrichment · EAN count × complexity"},
 ];
 
-const ROLE_OPTIONS   = ["Project Manager","Project Manager (FR)","Integrated Designer","Managing Director","Group Account Director","Account Director","Account Manager","Programme Lead","Delivery Lead","Project Director","Division Project Lead","Studio Operations Lead","Creative Lead","Automation & Tech Lead","GenAI Creative Director","Art Director","Copywriter","Motion Designer","Automation Designer/Editor","Director Global Client Ecom","Data Analyst/Engineer","Content Lead","Content Manager","Data Wrangler"];
-const FAMILY_OPTIONS = ["PM / Delivery","Creative / Design","Syndication / Data"];
-const STATUS_OPTIONS = ["Active","To Hire","On Hold"];
-const DIV_COLORS = { LDB:"#f59e0b", PPD:"#8b5cf6", LLD:"#3b82f6" };
-const DIVS = ["LDB","PPD","LLD"];
-const ASSET_KEY = { LDB:"assetsLDB", PPD:"assetsPPD", LLD:"assetsLLD" };
-
-const PROD_DAYS = {
-  Simple:  {"0-30":4,"30-50":7,"50-100":10,"100-200":18,"200-300":28,"300-500":42},
-  Complex: {"0-30":5,"30-50":9,"50-100":13,"100-200":22,"200-300":34,"300-500":52},
-  Creation:{"0-30":6,"30-50":11,"50-100":15,"100-200":26,"200-300":40,"300-500":62},
-  Bespoke: {"0-30":10,"30-50":18,"50-100":25,"100-200":42,"200-300":65,"300-500":100},
-};
-const PROD_REVS  = { Simple:1, Complex:2, Creation:4, Bespoke:4 };
-const OPERA_DAYS = {"0-30":1,"30-50":1,"50-100":2,"100-200":3,"200-300":5,"300-500":8};
-const SYND_DAYS  = {
-  Simple: {"1-5 EANs":4,"5-10 EANs":6,"10-15 EANs":8},
-  Mid:    {"1-5 EANs":6,"5-10 EANs":9,"10-15 EANs":12},
-  Complex:{"1-5 EANs":10,"5-10 EANs":15,"10-15 EANs":20},
-};
-const ASSET_BANDS = ["0-30","30-50","50-100","100-200","200-300","300-500"];
-
-const PT_BASE = [
-  { id:"cp-simple",     label:"Country Pull – Simple",     stages:[false,false,false,true, true, true, true, false], color:"#3b82f6" },
-  { id:"cp-adaptation", label:"Country Pull – Adaptation", stages:[false,true, false,true, true, true, true, false], color:"#6366f1" },
-  { id:"cp-creation",   label:"Country Pull – Creation",   stages:[true, true, false,true, true, true, true, false], color:"#8b5cf6" },
-  { id:"retailer",      label:"Country Retailer Request",  stages:[false,false,false,false,false,false,false,true],  color:"#22c55e" },
-  { id:"gp-eventing",   label:"Global Push – Eventing",    stages:[false,true, true, false,false,false,true, false], color:"#f59e0b" },
-  { id:"gp-pdp",        label:"Global Push – PDP",         stages:[false,true, true, false,false,false,true, false], color:"#f97316" },
-  { id:"lp-eventing",   label:"Local Push – Eventing",     stages:[false,false,false,true, true, true, true, true],  color:"#ef4444" },
-  { id:"lp-pdp",        label:"Local Push – PDP",          stages:[false,false,false,true, true, true, true, true],  color:"#ec4899" },
-  { id:"urgent",        label:"Urgent Brief",              stages:[false,false,false,false,false,true, true, false], color:"#14b8a6" },
+// ── Navigation tabs — Settings is now a first-class page ──────────────────
+const TABS=[
+  {id:"capacity",label:"Capacity"},
+  {id:"forecast",label:"Forecast"},
+  {id:"automation",label:"Automation"},
+  {id:"volume",label:"Volume"},
+  {id:"sla",label:"SLA Calc"},
+  {id:"team",label:"Team"},
+  {id:"settings",label:"Settings"},
 ];
 
-const SK = ["missingDMI","mastering","globalRollout","translation","production","operaUpload","syndication"];
-const SK_IDX = { missingDMI:[0],mastering:[1],globalRollout:[2],translation:[3,4],production:[5],operaUpload:[6],syndication:[7] };
-const STAGE_META = [
-  { key:"missingDMI",    label:"1. Missing DMI Asset Creation", desc:"Creation complexity · approval & revision" },
-  { key:"mastering",     label:"2. Mastering / Copy Creation",  desc:"Mid complexity · re-master & copy extraction" },
-  { key:"globalRollout", label:"3. Global Rollout Invitation",  desc:"Country rollout scheduling" },
-  { key:"translation",   label:"4+5. Translation",              desc:"Salsify PDP + Asset (concurrent)" },
-  { key:"production",    label:"6. Production",                 desc:"Complexity × asset volume · revision rounds" },
-  { key:"operaUpload",   label:"7. Opera Upload",               desc:"Upload assets to Opera DAM" },
-  { key:"syndication",   label:"8. Syndication",                desc:"Salsify enrichment · EAN count × complexity" },
-];
+const DEFAULT_AUTO={LLD:{simplePct:0.70,goLiveMonth:"Apr"},LDB:{simplePct:0.50,goLiveMonth:"Jun"},PPD:{simplePct:0.50,goLiveMonth:"Jun"}};
 
-const TABS = ["📊 Capacity","📈 Forecast","🤖 Automation","🗂 Volume","🔢 SLA Calc","👥 Team Manager"];
-const DEFAULT_AUTO = { LLD:{simplePct:0.70,goLiveMonth:"Apr"}, LDB:{simplePct:0.50,goLiveMonth:"Jun"}, PPD:{simplePct:0.50,goLiveMonth:"Jun"} };
+function stageActive(pt,key){return(SK_IDX[key]||[]).some(i=>pt.stages[i]);}
+function getDefaultDays(ptId,cplx,aBand,eanBand,syndCplx,withCF){const pt=PT_BASE.find(p=>p.id===ptId);if(!pt)return{};return{missingDMI:pt.stages[0]?(6+(withCF?5:0)):0,mastering:pt.stages[1]?2:0,globalRollout:pt.stages[2]?2:0,translation:(pt.stages[3]||pt.stages[4])?(3+(withCF?6:0)):0,production:pt.stages[5]?((PROD_DAYS[cplx]?.[aBand]??9)+(withCF?(PROD_REVS[cplx]??2)*4:0)):0,operaUpload:pt.stages[6]?(OPERA_DAYS[aBand]??1):0,syndication:pt.stages[7]?(SYND_DAYS[syndCplx]?.[eanBand]??4):0};}
+function getWeights(ptId){const w={"cp-simple":{pm:0.25,des:0.65},"cp-adaptation":{pm:0.28,des:0.62},"cp-creation":{pm:0.25,des:0.65},"retailer":{pm:0.20,des:0.15},"gp-eventing":{pm:0.35,des:0.45},"gp-pdp":{pm:0.35,des:0.45},"lp-eventing":{pm:0.28,des:0.52},"lp-pdp":{pm:0.28,des:0.52},"urgent":{pm:0.30,des:0.65}};return w[ptId]||{pm:0.28,des:0.62};}
 
-function stageActive(pt, key) { return (SK_IDX[key]||[]).some(i=>pt.stages[i]); }
-function getDefaultDays(ptId, cplx, aBand, eanBand, syndCplx, withCF) {
-  const pt = PT_BASE.find(p=>p.id===ptId); if (!pt) return {};
-  return {
-    missingDMI:   pt.stages[0]?(6+(withCF?5:0)):0,
-    mastering:    pt.stages[1]?2:0,
-    globalRollout:pt.stages[2]?2:0,
-    translation:  (pt.stages[3]||pt.stages[4])?(3+(withCF?6:0)):0,
-    production:   pt.stages[5]?((PROD_DAYS[cplx]?.[aBand]??9)+(withCF?(PROD_REVS[cplx]??2)*4:0)):0,
-    operaUpload:  pt.stages[6]?(OPERA_DAYS[aBand]??1):0,
-    syndication:  pt.stages[7]?(SYND_DAYS[syndCplx]?.[eanBand]??4):0,
-  };
+let _nextId=400;
+
+// ── Design components ─────────────────────────────────────────────────────
+function Card({children,className="",padding="p-6"}){return <div className={`bg-white rounded-2xl border border-gray-100 shadow-sm ${padding} ${className}`}>{children}</div>;}
+function Badge({children,color="gray",size="sm"}){const colors={gray:"bg-gray-100 text-gray-600",blue:"bg-blue-50 text-blue-700",green:"bg-green-50 text-green-700",amber:"bg-amber-50 text-amber-700",red:"bg-red-50 text-red-700",purple:"bg-purple-50 text-purple-700"};return <span className={`inline-flex items-center rounded-full font-medium ${size==="xs"?"px-2 py-0.5 text-xs":"px-2.5 py-1 text-xs"} ${colors[color]}`}>{children}</span>;}
+function SectionHeader({number,title,subtitle,what,insight,color="#3B82F6"}){return(<div className="mb-6"><div className="flex items-start gap-4"><div className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-sm font-bold flex-shrink-0 mt-0.5" style={{background:color}}>{number}</div><div className="flex-1"><h2 className="text-lg font-bold text-gray-900 leading-tight">{title}</h2><p className="text-sm text-gray-500 mt-0.5">{subtitle}</p>{(what||insight)&&(<div className="flex gap-3 mt-3 flex-wrap">{what&&<div className="flex items-start gap-2 bg-gray-50 rounded-xl px-3 py-2 text-xs text-gray-600 max-w-sm"><span className="font-semibold text-gray-400 flex-shrink-0">What</span><span>{what}</span></div>}{insight&&<div className="flex items-start gap-2 rounded-xl px-3 py-2 text-xs max-w-sm" style={{background:color+"0D"}}><span className="font-semibold flex-shrink-0" style={{color}}>{insight.label}</span><span style={{color:color+"CC"}}>{insight.text}</span></div>}</div>)}</div></div></div>);}
+function CardDescriptor({title,description,howToRead,accent="#6B7280"}){return(<div className="mb-5 pb-5 border-b border-gray-50"><p className="text-sm font-semibold text-gray-900">{title}</p><p className="text-xs text-gray-400 mt-1 leading-relaxed">{description}</p>{howToRead&&<p className="text-xs mt-2 font-medium" style={{color:accent}}>How to read: {howToRead}</p>}</div>);}
+function Insight({type="info",children}){const s={info:{bg:"#EFF6FF",border:"#BFDBFE",text:"#1E40AF",icon:"ℹ"},warn:{bg:"#FFFBEB",border:"#FDE68A",text:"#92400E",icon:"⚠"},tip:{bg:"#F0FDF4",border:"#A7F3D0",text:"#065F46",icon:"→"}}[type];return <div className="flex items-start gap-2 rounded-xl px-3 py-2.5 mt-3 text-xs leading-relaxed" style={{background:s.bg,border:`1px solid ${s.border}`,color:s.text}}><span className="flex-shrink-0 font-bold">{s.icon}</span><span>{children}</span></div>;}
+
+// ── Settings page slider row ──────────────────────────────────────────────
+function SettingRow({label,description,value,min,max,step=1,onChange,display,accent="#3B82F6",derived}){
+  return(
+    <div className="flex items-start gap-6 py-5 border-b border-gray-50 last:border-0">
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold text-gray-900">{label}</p>
+        <p className="text-xs text-gray-400 mt-0.5 leading-relaxed">{description}</p>
+        {derived&&<p className="text-xs font-semibold mt-1.5" style={{color:accent}}>→ {derived}</p>}
+      </div>
+      <div className="w-56 flex-shrink-0">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xl font-bold" style={{color:accent}}>{display||value}</span>
+        </div>
+        <input type="range" min={min} max={max} step={step} value={value} onChange={e=>onChange(+e.target.value)} className="w-full h-2 rounded-full cursor-pointer" style={{accentColor:accent}}/>
+        <div className="flex justify-between text-xs text-gray-300 mt-1"><span>{min}</span><span>{max}</span></div>
+      </div>
+    </div>
+  );
 }
-function getWeights(ptId) {
-  const w = {"cp-simple":{pm:0.25,des:0.65},"cp-adaptation":{pm:0.28,des:0.62},"cp-creation":{pm:0.25,des:0.65},"retailer":{pm:0.20,des:0.15},"gp-eventing":{pm:0.35,des:0.45},"gp-pdp":{pm:0.35,des:0.45},"lp-eventing":{pm:0.28,des:0.52},"lp-pdp":{pm:0.28,des:0.52},"urgent":{pm:0.30,des:0.65}};
-  return w[ptId]||{pm:0.28,des:0.62};
+
+// ── Quick slider pill (for the status bar) ────────────────────────────────
+function QuickSlider({label,value,min,max,step=1,onChange,display,accent="#3B82F6",hint}){
+  const[open,setOpen]=useState(false);
+  const handleChange=useCallback(e=>{e.stopPropagation();onChange(+e.target.value);},[onChange]);
+  return(
+    <div className="relative">
+      <button onClick={()=>setOpen(o=>!o)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all hover:bg-white hover:shadow-sm border border-transparent hover:border-gray-200" style={open?{background:"white",boxShadow:"0 1px 4px rgba(0,0,0,0.08)",borderColor:"#E5E7EB"}:{}}>
+        <span className="text-gray-400">{label}</span>
+        <span className="font-bold" style={{color:accent}}>{display||value}</span>
+        <svg width="8" height="5" viewBox="0 0 8 5" fill="none" className={`transition-transform ${open?"rotate-180":""}`}><path d="M1 1l3 3 3-3" stroke="#9CA3AF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+      </button>
+      {open&&(
+        <>
+          <div className="fixed inset-0 z-40" onClick={()=>setOpen(false)}/>
+          <div className="absolute top-full left-0 mt-2 z-50 bg-white rounded-2xl shadow-xl border border-gray-100 p-4 w-64" onMouseDown={e=>e.stopPropagation()}>
+            <div className="flex justify-between items-baseline mb-3"><p className="text-xs font-semibold text-gray-700">{label}</p><span className="text-lg font-bold" style={{color:accent}}>{display||value}</span></div>
+            <input type="range" min={min} max={max} step={step} value={value} onChange={handleChange} className="w-full h-1.5 rounded-full cursor-pointer" style={{accentColor:accent}}/>
+            <div className="flex justify-between text-xs text-gray-400 mt-1"><span>{min}</span><span>{max}</span></div>
+            {hint&&<p className="text-xs text-gray-400 mt-2 pt-2 border-t border-gray-100">{hint}</p>}
+          </div>
+        </>
+      )}
+    </div>
+  );
 }
 
-let _nextId = 400;
+export default function App(){
+  const[roster,setRoster]=useState(DEFAULT_ROSTER);
+  const[mix,setMix]=useState(DEFAULT_MIX);
+  const[slaOv,setSlaOv]=useState({});
+  const[utilPM,setUtilPM]=useState(82);
+  const[utilDes,setUtilDes]=useState(82);
+  const[manualRate,setManualRate]=useState(25);
+  const[pmHoursPerWeek,setPmHoursPerWeek]=useState(40);
+  const[hoursPerProject,setHoursPerProject]=useState(2.5);
+  const[qcMinsPerAsset,setQcMinsPerAsset]=useState(2.4);
+  const[mastersPerProj,setMastersPerProj]=useState(3);
+  const[hrsPerMaster,setHrsPerMaster]=useState(3);
+  const[periodIdx,setPeriodIdx]=useState(0);
+  const[calcCplx,setCalcCplx]=useState("Complex");
+  const[eanBand,setEanBand]=useState("1-5 EANs");
+  const[syndCplx,setSyndCplx]=useState("Simple");
+  const[clientDays,setClientDays]=useState(true);
+  const[activeTab,setActiveTab]=useState("capacity");
+  const[calcType,setCalcType]=useState("cp-adaptation");
+  const[calcAssetBand,setCalcAssetBand]=useState("30-50");
+  const[tmSearch,setTmSearch]=useState("");
+  const[tmDiv,setTmDiv]=useState("All");
+  const[tmType,setTmType]=useState("All");
+  const[tmRole,setTmRole]=useState("All");
+  const[showAdd,setShowAdd]=useState(false);
+  const[newP,setNewP]=useState({name:"",role:"Project Manager",family:"PM / Delivery",type:"FTE",division:"LDB",status:"Active",startDate:"now",endDate:"never"});
+  const[editId,setEditId]=useState(null);
+  const[editData,setEditData]=useState({});
+  const[dbStatus,setDbStatus]=useState(hasSupabase?"loading":"offline");
+  const[saving,setSaving]=useState(false);
+  const[prevMonths,setPrevMonths]=useState(1);
+  const[forecastDiv,setForecastDiv]=useState("Total");
+  const[autoScenario,setAutoScenario]=useState("with");
+  const[actuals,setActuals]=useState(FM.map(m=>({month:m.month,actualAssets:0,actualLdb:0,actualPpd:0,actualLld:0})));
+  const[autoEnabled,setAutoEnabled]=useState(true);
+  const[autoConfig,setAutoConfig]=useState(DEFAULT_AUTO);
 
-export default function App() {
-  const [roster,           setRoster]          = useState(DEFAULT_ROSTER);
-  const [mix,              setMix]             = useState(DEFAULT_MIX);
-  const [slaOv,            setSlaOv]           = useState({});
-  const [utilPM,           setUtilPM]          = useState(82);
-  const [utilDes,          setUtilDes]         = useState(82);
-  const [manualRate,       setManualRate]      = useState(25);
-  // ── CHANGE: two new inputs replace the old projectsPerPM slider ──────────
-  const [pmHoursPerWeek,   setPmHoursPerWeek]  = useState(40);   // total working hours/week
-  const [hoursPerProject,  setHoursPerProject] = useState(2.5);  // avg hrs a PM spends per project per week
-  // projectsPerPM is now DERIVED — not stored as state
-  // ─────────────────────────────────────────────────────────────────────────
-  const [periodIdx,        setPeriodIdx]       = useState(0);
-  const [calcCplx,         setCalcCplx]        = useState("Complex");
-  const [eanBand,          setEanBand]         = useState("1-5 EANs");
-  const [syndCplx,         setSyndCplx]        = useState("Simple");
-  const [clientDays,       setClientDays]      = useState(true);
-  const [activeTab,        setActiveTab]       = useState("📊 Capacity");
-  const [divFilter,        setDivFilter]       = useState("All");
-  const [calcType,         setCalcType]        = useState("cp-adaptation");
-  const [calcAssetBand,    setCalcAssetBand]   = useState("30-50");
-  const [tmSearch,         setTmSearch]        = useState("");
-  const [tmDiv,            setTmDiv]           = useState("All");
-  const [tmType,           setTmType]          = useState("All");
-  const [tmRole,           setTmRole]          = useState("All");
-  const [showAdd,          setShowAdd]         = useState(false);
-  const [newP,             setNewP]            = useState({name:"",role:"Project Manager",family:"PM / Delivery",type:"FTE",division:"LDB",status:"Active",startDate:"now",endDate:"never"});
-  const [editId,           setEditId]          = useState(null);
-  const [editData,         setEditData]        = useState({});
-  const [dbStatus,         setDbStatus]        = useState(hasSupabase?"loading":"offline");
-  const [saving,           setSaving]          = useState(false);
-  const [prevMonths,       setPrevMonths]      = useState(1);
-  const [forecastDiv,      setForecastDiv]     = useState("Total");
-  const [projView,         setProjView]        = useState("Total");
-  const [actuals,          setActuals]         = useState(FM.map(m=>({month:m.month,actualAssets:0,actualLdb:0,actualPpd:0,actualLld:0})));
-  const [autoEnabled,      setAutoEnabled]     = useState(true);
-  const [autoConfig,       setAutoConfig]      = useState(DEFAULT_AUTO);
-  const [autoQCRate,       setAutoQCRate]      = useState(200);
-  const [autoScenario,     setAutoScenario]    = useState("with");
+  const period=PERIODS[periodIdx];
+  const WD=period.workingDays;
+  const autoQCRate=useMemo(()=>qcAssetsPerDay(qcMinsPerAsset),[qcMinsPerAsset]);
+  const projectsPerPM=useMemo(()=>Math.max(1,Math.floor(pmHoursPerWeek*(utilPM/100)/hoursPerProject)),[pmHoursPerWeek,hoursPerProject,utilPM]);
+  const availHrsPM=+(pmHoursPerWeek*(utilPM/100)).toFixed(1);
+  const totalMasterHrs=mastersPerProj*hrsPerMaster;
 
-  const period = PERIODS[periodIdx];
-  const WD = period.workingDays;
-
-  // ── DERIVED: concurrent projects per PM ───────────────────────────────────
-  // Formula: floor( (hours/week × utilisation%) ÷ hours per project )
-  // Minimum 1 to avoid division issues
-  const projectsPerPM = useMemo(()=>{
-    const available = pmHoursPerWeek * (utilPM / 100);
-    return Math.max(1, Math.floor(available / hoursPerProject));
-  },[pmHoursPerWeek, hoursPerProject, utilPM]);
-
-  // Available productive hours per PM per week (for display)
-  const availableHoursPerPM = +(pmHoursPerWeek * (utilPM/100)).toFixed(1);
-
-  const updateAuto = (div,field,val) => setAutoConfig(p=>({...p,[div]:{...p[div],[field]:val}}));
-  const PT = useMemo(()=>PT_BASE.map(pt=>({...pt, autoEligible: mix.find(x=>x.id===pt.id)?.autoEligible??false})),[mix]);
-
-  const saveSettings = useCallback(async updates => {
-    if (!hasSupabase) return;
-    await sbUpsert("settings", Object.entries(updates).map(([key,value])=>({key,value:String(value)})));
-  },[]);
+  const updateAuto=(div,field,val)=>setAutoConfig(p=>({...p,[div]:{...p[div],[field]:val}}));
+  const PT=useMemo(()=>PT_BASE.map(pt=>({...pt,autoEligible:mix.find(x=>x.id===pt.id)?.autoEligible??false})),[mix]);
+  const saveSettings=useCallback(async updates=>{if(!hasSupabase)return;await sbUpsert("settings",Object.entries(updates).map(([key,value])=>({key,value:String(value)})));},[]);
 
   useEffect(()=>{
-    if (!hasSupabase) { setDbStatus("offline"); return; }
+    if(!hasSupabase){setDbStatus("offline");return;}
     (async()=>{
       setDbStatus("loading");
-      try {
+      try{
         const{data:rD}=await sbSelect("roster");
-        if(rD&&rD.length) setRoster(rD.map(p=>({...p,startDate:p.startDate||"now",endDate:p.endDate||"never"})));
+        if(rD&&rD.length)setRoster(rD.map(p=>({...p,startDate:p.startDate||"now",endDate:p.endDate||"never"})));
         else await sbUpsert("roster",DEFAULT_ROSTER);
         const{data:mD}=await sbSelect("project_mix");
-        if(mD&&mD.length) setMix(mD.map(m=>({...m,
-          assetsLDB:m.assetsLDB??DEFAULT_MIX.find(d=>d.id===m.id)?.assetsLDB??40,
-          assetsPPD:m.assetsPPD??DEFAULT_MIX.find(d=>d.id===m.id)?.assetsPPD??40,
-          assetsLLD:m.assetsLLD??DEFAULT_MIX.find(d=>d.id===m.id)?.assetsLLD??50,
-          autoEligible:m.autoEligible??DEFAULT_MIX.find(d=>d.id===m.id)?.autoEligible??false,
-        })));
+        if(mD&&mD.length)setMix(mD.map(m=>({...m,assetsLDB:m.assetsLDB??40,assetsPPD:m.assetsPPD??40,assetsLLD:m.assetsLLD??50,autoEligible:m.autoEligible??false})));
         else await sbUpsert("project_mix",DEFAULT_MIX);
         const{data:sD}=await sbSelect("sla_overrides");
         if(sD&&sD.length){const ov={};sD.forEach(r=>{if(!ov[r.pt_id])ov[r.pt_id]={};ov[r.pt_id][r.stage_key]=r.days;});setSlaOv(ov);}
         const{data:stD}=await sbSelect("settings");
-        if(stD&&stD.length) stD.forEach(s=>{
-          if(s.key==="utilPM")setUtilPM(+s.value);
-          if(s.key==="utilDes")setUtilDes(+s.value);
-          if(s.key==="manualRate")setManualRate(+s.value);
-          if(s.key==="pmHoursPerWeek")setPmHoursPerWeek(+s.value);
-          if(s.key==="hoursPerProject")setHoursPerProject(+s.value);
-          if(s.key==="periodIdx")setPeriodIdx(+s.value);
-          if(s.key==="eanBand")setEanBand(s.value);
-          if(s.key==="syndCplx")setSyndCplx(s.value);
-          if(s.key==="clientDays")setClientDays(s.value==="true");
-          if(s.key==="autoQCRate")setAutoQCRate(+s.value);
+        if(stD&&stD.length)stD.forEach(s=>{
+          if(s.key==="utilPM")setUtilPM(+s.value);if(s.key==="utilDes")setUtilDes(+s.value);
+          if(s.key==="manualRate")setManualRate(+s.value);if(s.key==="pmHoursPerWeek")setPmHoursPerWeek(+s.value);
+          if(s.key==="hoursPerProject")setHoursPerProject(+s.value);if(s.key==="qcMinsPerAsset")setQcMinsPerAsset(+s.value);
+          if(s.key==="mastersPerProj")setMastersPerProj(+s.value);if(s.key==="hrsPerMaster")setHrsPerMaster(+s.value);
+          if(s.key==="periodIdx")setPeriodIdx(+s.value);if(s.key==="eanBand")setEanBand(s.value);
+          if(s.key==="syndCplx")setSyndCplx(s.value);if(s.key==="clientDays")setClientDays(s.value==="true");
         });
         setDbStatus("connected");
-      } catch { setDbStatus("error"); }
+      }catch{setDbStatus("error");}
     })();
   },[]);
 
-  useMemo(()=>{
-    if(period.months!==prevMonths){
-      const sc=period.months/prevMonths;
-      setMix(prev=>{const u=prev.map(m=>({...m,LDB:Math.round(m.LDB*sc),PPD:Math.round(m.PPD*sc),LLD:Math.round(m.LLD*sc)}));if(hasSupabase)sbUpsert("project_mix",u);return u;});
-      setPrevMonths(period.months);
-    }
-  },[period.months]);
+  useMemo(()=>{if(period.months!==prevMonths){const sc=period.months/prevMonths;setMix(prev=>{const u=prev.map(m=>({...m,LDB:Math.round(m.LDB*sc),PPD:Math.round(m.PPD*sc),LLD:Math.round(m.LLD*sc)}));if(hasSupabase)sbUpsert("project_mix",u);return u;});setPrevMonths(period.months);}},[period.months]);
 
-  const updateMixCount  = async(id,div,val)=>{const u=mix.map(m=>m.id===id?{...m,[div]:Math.max(0,val)}:m);setMix(u);if(hasSupabase){setSaving(true);await sbUpsert("project_mix",u.find(m=>m.id===id));setSaving(false);}};
-  const updateMixAssets = async(id,dk,val)=>{const u=mix.map(m=>m.id===id?{...m,[dk]:Math.max(1,val)}:m);setMix(u);if(hasSupabase){setSaving(true);await sbUpsert("project_mix",u.find(m=>m.id===id));setSaving(false);}};
-  const toggleAuto      = async id=>{const u=mix.map(m=>m.id===id?{...m,autoEligible:!m.autoEligible}:m);setMix(u);if(hasSupabase){setSaving(true);await sbUpsert("project_mix",u.find(m=>m.id===id));setSaving(false);}};
-  const addPerson       = async()=>{if(!newP.name.trim())return;const p={...newP,id:++_nextId,removed:false};setRoster(prev=>[...prev,p]);setShowAdd(false);setNewP({name:"",role:"Project Manager",family:"PM / Delivery",type:"FTE",division:"LDB",status:"Active",startDate:"now",endDate:"never"});if(hasSupabase){setSaving(true);await sbUpsert("roster",[p]);setSaving(false);}};
-  const removePerson    = async id=>{setRoster(prev=>prev.map(p=>p.id===id?{...p,removed:true}:p));if(hasSupabase){setSaving(true);await sbPatch("roster",`id=eq.${id}`,{removed:true});setSaving(false);}};
-  const restorePerson   = async id=>{setRoster(prev=>prev.map(p=>p.id===id?{...p,removed:false}:p));if(hasSupabase){setSaving(true);await sbPatch("roster",`id=eq.${id}`,{removed:false});setSaving(false);}};
-  const startEdit       = p=>{setEditId(p.id);setEditData({...p,startDate:p.startDate||"now",endDate:p.endDate||"never"});};
-  const saveEdit        = async()=>{setRoster(prev=>prev.map(p=>p.id===editId?{...p,...editData}:p));setEditId(null);if(hasSupabase){setSaving(true);await sbUpsert("roster",[editData]);setSaving(false);}};
-  const setOv           = async(ptId,key,val)=>{const d=Math.max(0,parseInt(String(val))||0);setSlaOv(prev=>({...prev,[ptId]:{...(prev[ptId]||{}),[key]:d}}));if(hasSupabase){setSaving(true);await sbUpsert("sla_overrides",[{pt_id:ptId,stage_key:key,days:d}]);setSaving(false);}};
-  const resetOv         = async id=>{setSlaOv(prev=>{const n={...prev};delete n[id];return n;});if(hasSupabase){setSaving(true);await sbDelete("sla_overrides",`pt_id=eq.${id}`);setSaving(false);}};
-  const hasOv           = id=>!!(slaOv[id]&&Object.keys(slaOv[id]).length);
-  const updateActualFn  = (i,field,val)=>setActuals(prev=>prev.map((a,idx)=>idx===i?{...a,[field]:Math.max(0,parseInt(val)||0)}:a));
+  const updateMixCount=async(id,div,val)=>{const u=mix.map(m=>m.id===id?{...m,[div]:Math.max(0,val)}:m);setMix(u);if(hasSupabase){setSaving(true);await sbUpsert("project_mix",u.find(m=>m.id===id));setSaving(false);}};
+  const updateMixAssets=async(id,dk,val)=>{const u=mix.map(m=>m.id===id?{...m,[dk]:Math.max(1,val)}:m);setMix(u);if(hasSupabase){setSaving(true);await sbUpsert("project_mix",u.find(m=>m.id===id));setSaving(false);}};
+  const toggleAuto=async id=>{const u=mix.map(m=>m.id===id?{...m,autoEligible:!m.autoEligible}:m);setMix(u);if(hasSupabase){setSaving(true);await sbUpsert("project_mix",u.find(m=>m.id===id));setSaving(false);}};
+  const addPerson=async()=>{if(!newP.name.trim())return;const p={...newP,id:++_nextId,removed:false};setRoster(prev=>[...prev,p]);setShowAdd(false);setNewP({name:"",role:"Project Manager",family:"PM / Delivery",type:"FTE",division:"LDB",status:"Active",startDate:"now",endDate:"never"});if(hasSupabase){setSaving(true);await sbUpsert("roster",[p]);setSaving(false);}};
+  const removePerson=async id=>{setRoster(prev=>prev.map(p=>p.id===id?{...p,removed:true}:p));if(hasSupabase){setSaving(true);await sbPatch("roster",`id=eq.${id}`,{removed:true});setSaving(false);}};
+  const restorePerson=async id=>{setRoster(prev=>prev.map(p=>p.id===id?{...p,removed:false}:p));if(hasSupabase){setSaving(true);await sbPatch("roster",`id=eq.${id}`,{removed:false});setSaving(false);}};
+  const startEdit=p=>{setEditId(p.id);setEditData({...p,startDate:p.startDate||"now",endDate:p.endDate||"never"});};
+  const saveEdit=async()=>{setRoster(prev=>prev.map(p=>p.id===editId?{...p,...editData}:p));setEditId(null);if(hasSupabase){setSaving(true);await sbUpsert("roster",[editData]);setSaving(false);}};
+  const setOv=async(ptId,key,val)=>{const d=Math.max(0,parseInt(String(val))||0);setSlaOv(prev=>({...prev,[ptId]:{...(prev[ptId]||{}),[key]:d}}));if(hasSupabase){setSaving(true);await sbUpsert("sla_overrides",[{pt_id:ptId,stage_key:key,days:d}]);setSaving(false);}};
+  const resetOv=async id=>{setSlaOv(prev=>{const n={...prev};delete n[id];return n;});if(hasSupabase){setSaving(true);await sbDelete("sla_overrides",`pt_id=eq.${id}`);setSaving(false);}};
+  const hasOv=id=>!!(slaOv[id]&&Object.keys(slaOv[id]).length);
+  const updateActualFn=(i,field,val)=>setActuals(prev=>prev.map((a,idx)=>idx===i?{...a,[field]:Math.max(0,parseInt(val)||0)}:a));
 
-  const capacityRoster = useMemo(()=>roster.filter(p=>!p.removed&&p.status==="Active"),[roster]);
-
-  const poolsByDiv = useMemo(()=>{
+  const capacityRoster=useMemo(()=>roster.filter(p=>!p.removed&&p.status==="Active"),[roster]);
+  const poolsByDiv=useMemo(()=>{
     const res={};
     DIVS.forEach(div=>{
       const sum=arr=>arr.reduce((s,p)=>s+availFrac(p.startDate,p.endDate,WD),0);
-      const pmF  =capacityRoster.filter(p=>p.role==="Project Manager"    &&p.type==="FTE"      &&p.division===div);
-      const pmFL =capacityRoster.filter(p=>p.role==="Project Manager"    &&p.type==="Freelance"&&p.division===div);
-      const dF   =capacityRoster.filter(p=>p.role==="Integrated Designer"&&p.type==="FTE"      &&p.division===div);
-      const dFL  =capacityRoster.filter(p=>p.role==="Integrated Designer"&&p.type==="Freelance"&&p.division===div);
-      res[div]={
-        pm:  {fte:pmF.length, fl:pmFL.length, total:pmF.length+pmFL.length, efte:sum(pmF)+sum(pmFL)},
-        des: {fte:dF.length,  fl:dFL.length,  total:dF.length+dFL.length,  efteFTE:sum(dF), efteFL:sum(dFL), efte:sum(dF)+sum(dFL)},
-      };
+      const pmF=capacityRoster.filter(p=>p.role==="Project Manager"&&p.type==="FTE"&&p.division===div);
+      const pmFL=capacityRoster.filter(p=>p.role==="Project Manager"&&p.type==="Freelance"&&p.division===div);
+      const dF=capacityRoster.filter(p=>p.role==="Integrated Designer"&&p.type==="FTE"&&p.division===div);
+      const dFL=capacityRoster.filter(p=>p.role==="Integrated Designer"&&p.type==="Freelance"&&p.division===div);
+      res[div]={pm:{fte:pmF.length,fl:pmFL.length,total:pmF.length+pmFL.length,efte:sum(pmF)+sum(pmFL)},des:{fte:dF.length,fl:dFL.length,total:dF.length+dFL.length,efte:sum(dF)+sum(dFL)}};
     });
     res["All"]={
-      pm:  {fte:DIVS.reduce((s,d)=>s+res[d].pm.fte,0), fl:DIVS.reduce((s,d)=>s+res[d].pm.fl,0), total:DIVS.reduce((s,d)=>s+res[d].pm.total,0), efte:DIVS.reduce((s,d)=>s+res[d].pm.efte,0)},
-      des: {fte:DIVS.reduce((s,d)=>s+res[d].des.fte,0),fl:DIVS.reduce((s,d)=>s+res[d].des.fl,0),total:DIVS.reduce((s,d)=>s+res[d].des.total,0),efteFTE:DIVS.reduce((s,d)=>s+res[d].des.efteFTE,0),efteFL:DIVS.reduce((s,d)=>s+res[d].des.efteFL,0),efte:DIVS.reduce((s,d)=>s+res[d].des.efte,0)},
+      pm:{fte:DIVS.reduce((s,d)=>s+res[d].pm.fte,0),fl:DIVS.reduce((s,d)=>s+res[d].pm.fl,0),total:DIVS.reduce((s,d)=>s+res[d].pm.total,0),efte:DIVS.reduce((s,d)=>s+res[d].pm.efte,0)},
+      des:{fte:DIVS.reduce((s,d)=>s+res[d].des.fte,0),fl:DIVS.reduce((s,d)=>s+res[d].des.fl,0),total:DIVS.reduce((s,d)=>s+res[d].des.total,0),efte:DIVS.reduce((s,d)=>s+res[d].des.efte,0)},
     };
     return res;
   },[capacityRoster,WD]);
 
-  const activePools = useMemo(()=>{
-    const res={};
-    [...DIVS,"All"].forEach(div=>{
-      const hc=poolsByDiv[div];
-      res[div]={pm:Math.round((hc.pm.efte||0)*WD*(utilPM/100)), des:Math.round((hc.des.efte||0)*WD*(utilDes/100))};
-    });
-    return res;
-  },[poolsByDiv,WD,utilPM,utilDes]);
+  const globalHC=poolsByDiv["All"];
+  const totalPMs=globalHC.pm.efte||0;
+  const totalDes=globalHC.des.efte||0;
+  const fteDes=capacityRoster.filter(p=>p.role==="Integrated Designer"&&p.type==="FTE").length;
+  const flDes=capacityRoster.filter(p=>p.role==="Integrated Designer"&&p.type==="Freelance").length;
+  const ftePM=capacityRoster.filter(p=>p.role==="Project Manager"&&p.type==="FTE").length;
+  const flPM=capacityRoster.filter(p=>p.role==="Project Manager"&&p.type==="Freelance").length;
+  const manualCap=Math.round(totalDes*21*(utilDes/100)*manualRate);
+  const totalTeamPMCap=Math.round(totalPMs*projectsPerPM*(utilPM/100));
+  const desSupplyHrsPerMonth=Math.round(totalDes*21*HOURS_PER_DAY*(utilDes/100));
 
-  const calcSlaMap = useMemo(()=>{
-    const m={};
-    PT_BASE.forEach(pt=>{
-      const defs=getDefaultDays(pt.id,calcCplx,calcAssetBand,eanBand,syndCplx,clientDays);
-      const bd={};let total=0;
-      SK.forEach(k=>{const d=slaOv[pt.id]?.[k]!==undefined?slaOv[pt.id][k]:defs[k]??0;bd[k]=d;total+=d;});
-      const w=getWeights(pt.id);
-      m[pt.id]={total,breakdown:bd,defaults:defs,pmDays:Math.round(total*w.pm),desDays:Math.round(total*w.des)};
-    });
-    return m;
-  },[calcCplx,calcAssetBand,eanBand,syndCplx,clientDays,slaOv]);
-
-  const mixAnalysis = useMemo(()=>DIVS.map(div=>{
-    let tPM=0,tDes=0,tProj=0,tAssets=0;
-    const rows=mix.map(m=>{
-      const pt=PT.find(p=>p.id===m.id);
-      const cnt=m[div]||0, assets=m[ASSET_KEY[div]]||0, sla=calcSlaMap[m.id];
-      tPM+=(sla?.pmDays||0)*cnt; tDes+=(sla?.desDays||0)*cnt; tProj+=cnt; tAssets+=assets*cnt;
-      return{id:m.id,label:pt?.label||m.id,count:cnt,assets:assets*cnt,color:pt?.color||"#666",autoEligible:m.autoEligible};
-    });
-    return{div,rows,tPM,tDes,tProj,tAssets};
-  }),[mix,calcSlaMap,PT]);
-
-  const combined = useMemo(()=>{
-    const a={div:"All",tPM:0,tDes:0,tProj:0,tAssets:0};
-    mixAnalysis.forEach(d=>{a.tPM+=d.tPM;a.tDes+=d.tDes;a.tProj+=d.tProj;a.tAssets+=d.tAssets;});
-    return a;
-  },[mixAnalysis]);
-
-  const rag = u => u<=85?{dot:"🟢",bg:"bg-green-50",brd:"border-green-200",tx:"text-green-700",bar:"bg-green-500"}
-                  :u<=100?{dot:"🟡",bg:"bg-amber-50",brd:"border-amber-200",tx:"text-amber-700",bar:"bg-amber-400"}
-                  :       {dot:"🔴",bg:"bg-red-50",  brd:"border-red-200",  tx:"text-red-700",  bar:"bg-red-500"};
-  const uc   = (d,a) => a>0?Math.round((d/a)*100):0;
-  const getA = d => d==="All"?combined:(mixAnalysis.find(x=>x.div===d)||combined);
-  const cur=getA(divFilter), ap=activePools[divFilter]||activePools["All"];
-  const uPM=uc(cur.tPM,ap.pm), uDes=uc(cur.tDes,ap.des);
-
-  const globalHC  = poolsByDiv["All"];
-  const totalPMs  = globalHC.pm.efte||0;
-  const fteDes    = capacityRoster.filter(p=>p.role==="Integrated Designer"&&p.type==="FTE").length;
-  const flDes     = capacityRoster.filter(p=>p.role==="Integrated Designer"&&p.type==="Freelance").length;
-  const ftePM     = capacityRoster.filter(p=>p.role==="Project Manager"&&p.type==="FTE").length;
-  const flPM      = capacityRoster.filter(p=>p.role==="Project Manager"&&p.type==="Freelance").length;
-  const manualCap = Math.round((globalHC.des.efte||0)*21*(utilDes/100)*manualRate);
-  const totalTeamPMCap = Math.round(totalPMs * projectsPerPM * (utilPM/100));
-
-  const monthlyCap = useMemo(()=>FM.map(fm=>{
+  const monthlyCap=useMemo(()=>FM.map(fm=>{
     const ua=autoEnabled&&autoScenario==="with";
-    const lr=ua?blendedRate("LLD",fm.month,autoConfig,autoQCRate,manualRate):manualRate;
-    const br=ua?blendedRate("LDB",fm.month,autoConfig,autoQCRate,manualRate):manualRate;
-    const pr=ua?blendedRate("PPD",fm.month,autoConfig,autoQCRate,manualRate):manualRate;
+    const lr=ua?blendedRateFromQC("LLD",fm.month,autoConfig,qcMinsPerAsset,manualRate):manualRate;
+    const br=ua?blendedRateFromQC("LDB",fm.month,autoConfig,qcMinsPerAsset,manualRate):manualRate;
+    const pr=ua?blendedRateFromQC("PPD",fm.month,autoConfig,qcMinsPerAsset,manualRate):manualRate;
     const lld=Math.round((poolsByDiv["LLD"].des.efte||0)*21*(utilDes/100)*lr);
     const ldb=Math.round((poolsByDiv["LDB"].des.efte||0)*21*(utilDes/100)*br);
     const ppd=Math.round((poolsByDiv["PPD"].des.efte||0)*21*(utilDes/100)*pr);
@@ -479,628 +375,745 @@ export default function App() {
     const ldbM=Math.round((poolsByDiv["LDB"].des.efte||0)*21*(utilDes/100)*manualRate);
     const ppdM=Math.round((poolsByDiv["PPD"].des.efte||0)*21*(utilDes/100)*manualRate);
     const anyAuto=isAutoLive("LLD",fm.month,autoConfig)||isAutoLive("LDB",fm.month,autoConfig)||isAutoLive("PPD",fm.month,autoConfig);
-    const manT=lldM+ldbM+ppdM, autoT=lld+ldb+ppd;
-    return{month:fm.month,total:autoT,lld,ldb,ppd,manualTotal:manT,
-      lldAuto:isAutoLive("LLD",fm.month,autoConfig),ldbAuto:isAutoLive("LDB",fm.month,autoConfig),ppdAuto:isAutoLive("PPD",fm.month,autoConfig),
-      anyAuto,uplift:Math.round((autoT/manT-1)*100),
-      preAutoCapacity:anyAuto?null:manT, postAutoCapacity:anyAuto?autoT:null};
-  }),[poolsByDiv,utilDes,autoEnabled,autoScenario,autoConfig,autoQCRate,manualRate]);
+    const manT=lldM+ldbM+ppdM,autoT=lld+ldb+ppd;
+    return{month:fm.month,total:autoT,lld,ldb,ppd,manualTotal:manT,lldAuto:isAutoLive("LLD",fm.month,autoConfig),ldbAuto:isAutoLive("LDB",fm.month,autoConfig),ppdAuto:isAutoLive("PPD",fm.month,autoConfig),anyAuto,preAutoCapacity:anyAuto?null:manT,postAutoCapacity:anyAuto?autoT:null};
+  }),[poolsByDiv,utilDes,autoEnabled,autoScenario,autoConfig,qcMinsPerAsset,manualRate]);
 
-  const pmAnalysis = useMemo(()=>FM.map(fm=>{
-    const teamCap = Math.round(totalPMs * projectsPerPM * (utilPM/100));
-    const demand = fm.monthlyForecast;
-    const oliverTotalCap = fm.permPMMonthly + fm.flyPMMonthly;
-    const teamCoverPct   = demand>0?Math.round((teamCap/demand)*100):0;
-    const oliverCoverPct = demand>0?Math.round((oliverTotalCap/demand)*100):0;
-    const teamGap = teamCap - demand;
-    const teamReqPerPM = totalPMs>0?(demand/totalPMs).toFixed(1):"—";
-    return{...fm, teamCap, demand, oliverTotalCap, teamCoverPct, oliverCoverPct, teamGap, teamReqPerPM};
+  const designerWorkload=useMemo(()=>FM.map(fm=>{
+    const lldAR=isAutoLive("LLD",fm.month,autoConfig)?autoConfig["LLD"].simplePct:0;
+    const ldbAR=isAutoLive("LDB",fm.month,autoConfig)?autoConfig["LDB"].simplePct:0;
+    const ppdAR=isAutoLive("PPD",fm.month,autoConfig)?autoConfig["PPD"].simplePct:0;
+    const autoProj=Math.round(fm.lldProj*fm.weeksInMonth*lldAR+fm.ldbProj*fm.weeksInMonth*ldbAR+fm.ppdProj*fm.weeksInMonth*ppdAR);
+    const masterSetupHrs=Math.round(autoProj*mastersPerProj*hrsPerMaster);
+    const lldAA=Math.round(fm.lld*lldAR),ldbAA=Math.round(fm.ldb*ldbAR),ppdAA=Math.round(fm.ppd*ppdAR);
+    const totalAutoAssets=lldAA+ldbAA+ppdAA;
+    const qcHrs=Math.round(totalAutoAssets*qcMinsPerAsset/60);
+    const totalManualAssets=(fm.lld-lldAA)+(fm.ldb-ldbAA)+(fm.ppd-ppdAA);
+    const manualProdHrs=Math.round((totalManualAssets/manualRate)*HOURS_PER_DAY);
+    const totalDemandHrs=masterSetupHrs+qcHrs+manualProdHrs;
+    const utilPct=desSupplyHrsPerMonth>0?Math.round((totalDemandHrs/desSupplyHrsPerMonth)*100):0;
+    return{month:fm.month,autoProj,totalAutoAssets,totalManualAssets,masterSetupHrs,qcHrs,manualProdHrs,totalDemandHrs,supplyHrs:desSupplyHrsPerMonth,utilPct,gapHrs:desSupplyHrsPerMonth-totalDemandHrs,anyAuto:lldAR>0||ldbAR>0||ppdAR>0};
+  }),[FM,autoConfig,mastersPerProj,hrsPerMaster,qcMinsPerAsset,manualRate,desSupplyHrsPerMonth]);
+
+  const pmAnalysis=useMemo(()=>FM.map(fm=>{
+    const teamCap=Math.round(totalPMs*projectsPerPM*(utilPM/100));
+    const demand=fm.monthlyForecast;
+    const oliverTotalCap=fm.permPMMonthly+fm.flyPMMonthly;
+    return{...fm,teamCap,demand,oliverTotalCap,teamCoverPct:demand>0?Math.round((teamCap/demand)*100):0,oliverCoverPct:demand>0?Math.round((oliverTotalCap/demand)*100):0,teamGap:teamCap-demand,teamReqPerPM:totalPMs>0?(demand/totalPMs).toFixed(1):"—"};
   }),[totalPMs,projectsPerPM,utilPM]);
 
-  const forecastChartData = FM.map((fm,i)=>{
-    const a=actuals[i], mc=monthlyCap[i];
-    return{...fm,
-      capacityTotal:mc?.total||0, capacityLdb:mc?.ldb||0, capacityPpd:mc?.ppd||0, capacityLld:mc?.lld||0,
-      manualCapacity:mc?.manualTotal||0, lldAuto:mc?.lldAuto, ldbAuto:mc?.ldbAuto, ppdAuto:mc?.ppdAuto,
-      anyAuto:mc?.anyAuto, preAutoCapacity:mc?.preAutoCapacity, postAutoCapacity:mc?.postAutoCapacity,
-      actualAssets:a.actualAssets||null, actualLdb:a.actualLdb||null, actualPpd:a.actualPpd||null, actualLld:a.actualLld||null,
-    };
-  });
+  const calcSlaMap=useMemo(()=>{const m={};PT_BASE.forEach(pt=>{const defs=getDefaultDays(pt.id,calcCplx,calcAssetBand,eanBand,syndCplx,clientDays);const bd={};let total=0;SK.forEach(k=>{const d=slaOv[pt.id]?.[k]!==undefined?slaOv[pt.id][k]:defs[k]??0;bd[k]=d;total+=d;});const w=getWeights(pt.id);m[pt.id]={total,breakdown:bd,defaults:defs,pmDays:Math.round(total*w.pm),desDays:Math.round(total*w.des)};});return m;},[calcCplx,calcAssetBand,eanBand,syndCplx,clientDays,slaOv]);
+  const mixAnalysis=useMemo(()=>DIVS.map(div=>{let tProj=0,tAssets=0;mix.forEach(m=>{tProj+=m[div]||0;tAssets+=(m[ASSET_KEY[div]]||0)*(m[div]||0);});return{div,tProj,tAssets};}),[mix]);
+  const combined=useMemo(()=>{const a={tProj:0,tAssets:0};mixAnalysis.forEach(d=>{a.tProj+=d.tProj;a.tAssets+=d.tAssets;});return a;},[mixAnalysis]);
 
-  const activeForecastData = useMemo(()=>forecastChartData.map(d=>{
-    if(forecastDiv==="LDB") return{...d,targetAssets:d.ldb,capacityLine:d.capacityLdb,actualAssets:d.actualLdb};
-    if(forecastDiv==="PPD") return{...d,targetAssets:d.ppd,capacityLine:d.capacityPpd,actualAssets:d.actualPpd};
-    if(forecastDiv==="LLD") return{...d,targetAssets:d.lld,capacityLine:d.capacityLld,actualAssets:d.actualLld};
-    return{...d,targetAssets:d.gt,capacityLine:d.capacityTotal,actualAssets:d.actualAssets};
-  }),[forecastChartData,forecastDiv]);
+  const forecastChartData=FM.map((fm,i)=>{const a=actuals[i],mc=monthlyCap[i];return{...fm,capacityTotal:mc?.total||0,capacityLdb:mc?.ldb||0,capacityPpd:mc?.ppd||0,capacityLld:mc?.lld||0,manualCapacity:mc?.manualTotal||0,lldAuto:mc?.lldAuto,ldbAuto:mc?.ldbAuto,ppdAuto:mc?.ppdAuto,anyAuto:mc?.anyAuto,preAutoCapacity:mc?.preAutoCapacity,postAutoCapacity:mc?.postAutoCapacity,actualAssets:a.actualAssets||null,actualLdb:a.actualLdb||null,actualPpd:a.actualPpd||null,actualLld:a.actualLld||null};});
+  const activeForecastData=useMemo(()=>forecastChartData.map(d=>{if(forecastDiv==="LDB")return{...d,targetAssets:d.ldb,capacityLine:d.capacityLdb,actualAssets:d.actualLdb};if(forecastDiv==="PPD")return{...d,targetAssets:d.ppd,capacityLine:d.capacityPpd,actualAssets:d.actualPpd};if(forecastDiv==="LLD")return{...d,targetAssets:d.lld,capacityLine:d.capacityLld,actualAssets:d.actualLld};return{...d,targetAssets:d.gt,capacityLine:d.capacityTotal,actualAssets:d.actualAssets};}),[forecastChartData,forecastDiv]);
 
-  const divSummaryData = DIVS.map(div=>{const a=mixAnalysis.find(x=>x.div===div),p=activePools[div];return{name:div,Projects:a.tProj,Assets:Math.round(a.tAssets),PMUtil:uc(a.tPM,p.pm),DesUtil:uc(a.tDes,p.des)};});
-  const calcPt  = PT.find(p=>p.id===calcType);
-  const calcSla = calcSlaMap[calcType];
+  const calcPt=PT.find(p=>p.id===calcType);
+  const calcSla=calcSlaMap[calcType];
+  const tmFiltered=useMemo(()=>roster.filter(p=>{if(tmDiv!=="All"&&p.division!==tmDiv)return false;if(tmType!=="All"&&p.type!==tmType)return false;if(tmRole!=="All"&&p.role!==tmRole)return false;if(tmSearch&&!p.name.toLowerCase().includes(tmSearch.toLowerCase()))return false;return true;}),[roster,tmSearch,tmDiv,tmType,tmRole]);
+  const pendingStarters=useMemo(()=>capacityRoster.filter(p=>p.startDate&&p.startDate!=="now"&&new Date(p.startDate)>new Date()).sort((a,b)=>new Date(a.startDate)-new Date(b.startDate)),[capacityRoster]);
+  const pendingLeavers=useMemo(()=>capacityRoster.filter(p=>p.endDate&&p.endDate!=="never"&&new Date(p.endDate)>new Date()).sort((a,b)=>new Date(a.endDate)-new Date(b.endDate)),[capacityRoster]);
+  const designerChartData=designerWorkload.map(d=>({month:d.month,"Master Setup":d.masterSetupHrs,"QC Review":d.qcHrs,"Manual Production":d.manualProdHrs,Supply:d.supplyHrs}));
+  const ragU=u=>u<=85?{color:"#22C55E",bg:"#F0FDF4",text:"#15803D"}:u<=100?{color:"#F59E0B",bg:"#FFFBEB",text:"#B45309"}:{color:"#EF4444",bg:"#FEF2F2",text:"#B91C1C"};
 
-  const tmFiltered = useMemo(()=>roster.filter(p=>{
-    if(tmDiv!=="All"&&p.division!==tmDiv) return false;
-    if(tmType!=="All"&&p.type!==tmType) return false;
-    if(tmRole!=="All"&&p.role!==tmRole) return false;
-    if(tmSearch&&!p.name.toLowerCase().includes(tmSearch.toLowerCase())) return false;
-    return true;
-  }),[roster,tmSearch,tmDiv,tmType,tmRole]);
+  const TAB_META={
+    capacity:{description:"Can the team handle the workload? Shows PM and designer capacity vs L'Oréal's project forecast, month by month."},
+    forecast:{description:"Are we on track to deliver the asset volumes L'Oréal expects? Track forecast vs capacity vs actuals across all three divisions."},
+    automation:{description:"How does automation change what we can deliver? Configure go-live dates, project eligibility and see the capacity uplift it creates."},
+    volume:{description:"What's the expected project mix? Set project counts and average asset volumes per brief type to calibrate the capacity model."},
+    sla:{description:"How long will a specific project take? Estimate the end-to-end timeline for any brief by type, complexity and asset volume."},
+    team:{description:"Who is on the team? Manage the live roster of PMs and designers — add, edit, set start/exit dates and track capacity contributions."},
+    settings:{description:"Configure all model assumptions in one place. Changes here update every calculation across the tool instantly."},
+  };
 
-  const DIV_PROJ_KEY = {LDB:"ldbProj",PPD:"ppdProj",LLD:"lldProj"};
-  const pendingStarters = useMemo(()=>capacityRoster.filter(p=>p.startDate&&p.startDate!=="now"&&new Date(p.startDate)>new Date()).sort((a,b)=>new Date(a.startDate)-new Date(b.startDate)),[capacityRoster]);
-  const pendingLeavers  = useMemo(()=>capacityRoster.filter(p=>p.endDate&&p.endDate!=="never"&&new Date(p.endDate)>new Date()).sort((a,b)=>new Date(a.endDate)-new Date(b.endDate)),[capacityRoster]);
+  return(
+    <div className="min-h-screen font-sans" style={{background:"#F8F8F8",fontFamily:"-apple-system,BlinkMacSystemFont,'SF Pro Display','Segoe UI',sans-serif"}}>
 
-  return (
-    <div className="bg-gray-50 min-h-screen font-sans">
-
-      {/* HEADER */}
-      <div className="bg-gradient-to-r from-gray-900 to-gray-800 text-white px-5 py-4">
-        <div className="flex items-start justify-between flex-wrap gap-2">
-          <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">L'Oréal eCommerce Programme · Global Programme Director</p>
-            <h1 className="text-xl font-black mt-0.5">Capacity & Volume Planning Tool</h1>
-            <p className="text-xs text-gray-400 mt-0.5">
-              PMs: {globalHC.pm.total} ({ftePM}F+{flPM}FL) · Designers: {globalHC.des.total} ({fteDes}F+{flDes}FL)
-              · {manualRate}/day · {availableHoursPerPM}h/PM/wk ÷ {hoursPerProject}h/proj = <span className="text-blue-300 font-bold">{projectsPerPM} concurrent</span>
-              {pendingStarters.length>0&&<span className="text-amber-400"> · ⏳{pendingStarters.length}</span>}
-              {pendingLeavers.length>0&&<span className="text-red-400"> · 🔴{pendingLeavers.length}</span>}
-            </p>
-          </div>
-          <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${dbStatus==="connected"?"bg-green-100 text-green-700":dbStatus==="offline"?"bg-gray-100 text-gray-500":"bg-red-100 text-red-600"}`}>
-            <div className={`w-2 h-2 rounded-full ${dbStatus==="connected"?"bg-green-500":dbStatus==="offline"?"bg-gray-400":"bg-red-400"}`}/>
-            {dbStatus==="connected"?"🟢 Supabase":dbStatus==="offline"?"⚪ Offline":"❌ DB error"}
-            {saving&&<span className="ml-1 opacity-70">Saving…</span>}
-          </div>
-        </div>
-      </div>
-
-      {/* GLOBAL SETTINGS */}
-      <div className="bg-white border-b border-gray-200 px-5 py-3">
-        <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">⚙️ Global Settings</p>
-
-        {/* Period */}
-        <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 mb-3">
-          <div className="flex items-center justify-between flex-wrap gap-3">
-            <p className="text-xs font-bold text-blue-700 uppercase">📅 Planning Period</p>
-            <div className="flex gap-2 flex-wrap">
-              {PERIODS.map((p,i)=>(
-                <button key={p.label} onClick={()=>{setPeriodIdx(i);saveSettings({periodIdx:i});}}
-                  className={`px-4 py-2 rounded-lg text-sm font-bold border ${periodIdx===i?"bg-blue-600 text-white border-blue-600":"bg-white text-blue-600 border-blue-300"}`}>
-                  {p.label}
+      {/* ── TOP NAV ── */}
+      <div className="sticky top-0 z-40" style={{background:"rgba(248,248,248,0.92)",backdropFilter:"blur(20px)",borderBottom:"1px solid rgba(0,0,0,0.06)"}}>
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="flex items-center justify-between h-14">
+            <div className="flex items-center gap-3">
+              <div className="w-7 h-7 rounded-lg flex items-center justify-center text-white text-xs font-bold" style={{background:"#1D1D1F"}}>L</div>
+              <div><p className="text-sm font-semibold text-gray-900 leading-none">eCommerce Capacity</p><p className="text-xs text-gray-400 leading-none mt-0.5">L'Oréal Programme · {period.label}</p></div>
+            </div>
+            <nav className="flex items-center gap-1">
+              {TABS.map(t=>(
+                <button key={t.id} onClick={()=>setActiveTab(t.id)}
+                  className="px-4 py-1.5 rounded-full text-sm font-medium transition-all"
+                  style={activeTab===t.id
+                    ? t.id==="settings"?{background:"#F3F4F6",color:"#374151"}:{background:"#1D1D1F",color:"white"}
+                    : t.id==="settings"?{color:"#9CA3AF"}:{color:"#6B7280"}
+                  }>
+                  {t.id==="settings"?"⚙ Settings":t.label}
                 </button>
               ))}
-            </div>
-            <div className="text-right bg-white border border-blue-200 rounded-xl px-4 py-2">
-              <p className="text-xs text-blue-500">Working Days</p>
-              <p className="text-2xl font-black text-blue-700">{WD}</p>
+            </nav>
+            <div className="flex items-center gap-2">
+              <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${dbStatus==="connected"?"text-green-700":"text-gray-500"}`} style={{background:dbStatus==="connected"?"#F0FDF4":"#F3F4F6"}}>
+                <div className={`w-1.5 h-1.5 rounded-full ${dbStatus==="connected"?"bg-green-500":"bg-gray-400"}`}/>
+                {dbStatus==="connected"?"Synced":dbStatus==="offline"?"Offline":"Error"}
+                {saving&&<span className="opacity-60">·saving</span>}
+              </div>
+              {pendingStarters.length>0&&<Badge color="amber" size="xs">⏳ {pendingStarters.length}</Badge>}
+              {pendingLeavers.length>0&&<Badge color="red" size="xs">🔴 {pendingLeavers.length}</Badge>}
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3 mb-3">
-          {/* PM Utilisation */}
-          <div>
-            <label className="text-xs font-semibold text-gray-700 block mb-0.5">PM Util: {utilPM}%</label>
-            <input type="range" min={60} max={95} value={utilPM} onChange={e=>{setUtilPM(+e.target.value);saveSettings({utilPM:+e.target.value});}} className="w-full accent-blue-600"/>
-          </div>
-
-          {/* Designer Utilisation */}
-          <div>
-            <label className="text-xs font-semibold text-gray-700 block mb-0.5">Designer Util: {utilDes}%</label>
-            <input type="range" min={60} max={95} value={utilDes} onChange={e=>{setUtilDes(+e.target.value);saveSettings({utilDes:+e.target.value});}} className="w-full accent-purple-600"/>
-          </div>
-
-          {/* Manual Throughput */}
-          <div className="bg-orange-50 border border-orange-200 rounded-xl px-3 py-2">
-            <label className="text-xs font-bold text-orange-700 block mb-0.5">Manual Throughput: <span className="font-black">{manualRate}/day</span></label>
-            <input type="range" min={10} max={50} value={manualRate} onChange={e=>{setManualRate(+e.target.value);saveSettings({manualRate:+e.target.value});}} className="w-full accent-orange-600"/>
-            <div className="flex justify-between text-xs text-orange-400 mt-0.5"><span>10</span><span>25</span><span>50</span></div>
-            <p className="text-xs text-orange-600 mt-1">Asset cap: <strong>{manualCap.toLocaleString()}/mo</strong></p>
-          </div>
-
-          {/* ── CHANGE: PM Capacity model — replaces old concurrent projects slider ── */}
-          <div className="bg-blue-50 border border-blue-200 rounded-xl px-3 py-2 row-span-2">
-            <p className="text-xs font-bold text-blue-700 mb-2 uppercase">PM Capacity Model</p>
-
-            {/* Working hours per week */}
-            <div className="mb-3">
-              <label className="text-xs font-semibold text-blue-700 block mb-0.5">
-                Working hours/week: <span className="font-black">{pmHoursPerWeek}h</span>
-              </label>
-              <input type="range" min={35} max={45} step={0.5} value={pmHoursPerWeek}
-                onChange={e=>{setPmHoursPerWeek(+e.target.value);saveSettings({pmHoursPerWeek:+e.target.value});}}
-                className="w-full accent-blue-600"/>
-              <div className="flex justify-between text-xs text-blue-400 mt-0.5"><span>35h</span><span>40h</span><span>45h</span></div>
-            </div>
-
-            {/* Hours per project per week */}
-            <div className="mb-3">
-              <label className="text-xs font-semibold text-blue-700 block mb-0.5">
-                Hrs/project/week: <span className="font-black">{hoursPerProject}h</span>
-              </label>
-              <input type="range" min={0.5} max={8} step={0.5} value={hoursPerProject}
-                onChange={e=>{setHoursPerProject(+e.target.value);saveSettings({hoursPerProject:+e.target.value});}}
-                className="w-full accent-blue-600"/>
-              <div className="flex justify-between text-xs text-blue-400 mt-0.5"><span>0.5h</span><span>2.5h</span><span>8h</span></div>
-            </div>
-
-            {/* Derived result — prominent display */}
-            <div className="bg-blue-600 rounded-xl p-3 text-white text-center">
-              <p className="text-xs opacity-80 mb-1">Concurrent projects/PM</p>
-              <p className="text-3xl font-black leading-none">{projectsPerPM}</p>
-              <p className="text-xs opacity-70 mt-1">= {availableHoursPerPM}h available ÷ {hoursPerProject}h/proj</p>
-              <div className="mt-2 pt-2 border-t border-blue-500">
-                <p className="text-xs opacity-80">Team PM cap/mo</p>
-                <p className="text-xl font-black">{totalTeamPMCap.toLocaleString()}</p>
-                <p className="text-xs opacity-60">{Math.round(totalPMs)} PMs × {projectsPerPM} × {utilPM}%</p>
+        {/* Quick settings bar — hidden on Settings page (redundant there) */}
+        {activeTab!=="settings"&&(
+          <div style={{borderTop:"1px solid rgba(0,0,0,0.04)",background:"rgba(248,248,248,0.97)"}}>
+            <div className="max-w-7xl mx-auto px-6 py-1.5 flex items-center gap-1 flex-wrap">
+              <div className="flex items-center gap-1 mr-2">
+                <span className="text-xs text-gray-400 mr-1">Period</span>
+                {PERIODS.map((p,i)=>(<button key={p.label} onClick={()=>{setPeriodIdx(i);saveSettings({periodIdx:i});}} className="px-2.5 py-1 rounded-lg text-xs font-semibold transition-all" style={periodIdx===i?{background:"#1D1D1F",color:"white"}:{color:"#9CA3AF"}}>{p.label}</button>))}
+              </div>
+              <div className="w-px h-5 bg-gray-200 mx-1"/>
+              <QuickSlider label="PM Util" value={utilPM} min={60} max={95} onChange={v=>{setUtilPM(v);saveSettings({utilPM:v});}} display={`${utilPM}%`} accent="#3B82F6" hint="Productive PM time % (accounts for meetings, admin etc.)"/>
+              <QuickSlider label="Des Util" value={utilDes} min={60} max={95} onChange={v=>{setUtilDes(v);saveSettings({utilDes:v});}} display={`${utilDes}%`} accent="#8B5CF6" hint="Productive designer time %"/>
+              <QuickSlider label="Hrs/project" value={hoursPerProject} min={0.5} max={8} step={0.5} onChange={v=>{setHoursPerProject(v);saveSettings({hoursPerProject:v});}} display={`${hoursPerProject}h`} accent="#3B82F6" hint={`Hours a PM spends per project per week → ${projectsPerPM} concurrent/PM · ${totalTeamPMCap.toLocaleString()} team cap/mo`}/>
+              <QuickSlider label="Manual rate" value={manualRate} min={10} max={50} onChange={v=>{setManualRate(v);saveSettings({manualRate:v});}} display={`${manualRate}/day`} accent="#F97316" hint={`Assets a designer manually produces per day · cap ${manualCap.toLocaleString()}/mo`}/>
+              <QuickSlider label="QC time" value={qcMinsPerAsset} min={0.5} max={10} step={0.5} onChange={v=>{setQcMinsPerAsset(v);saveSettings({qcMinsPerAsset:v});}} display={`${qcMinsPerAsset}min`} accent="#8B5CF6" hint={`Minutes to review each auto asset on canvas = ${autoQCRate} assets/day · ${(autoQCRate/manualRate).toFixed(1)}× vs manual`}/>
+              <QuickSlider label="Masters/proj" value={mastersPerProj} min={1} max={6} onChange={v=>{setMastersPerProj(v);saveSettings({mastersPerProj:v});}} display={`${mastersPerProj}×${hrsPerMaster}h=${totalMasterHrs}h`} accent="#8B5CF6" hint={`${mastersPerProj} format masters × ${hrsPerMaster}h each = ${totalMasterHrs}h designer setup per auto project`}/>
+              <div className="w-px h-5 bg-gray-200 mx-1"/>
+              <button onClick={()=>setActiveTab("settings")} className="flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-medium text-gray-400 hover:text-gray-700 hover:bg-white hover:shadow-sm border border-transparent hover:border-gray-200 transition-all">
+                All settings →
+              </button>
+              <div className="ml-auto flex items-center gap-2">
+                <span className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-50 text-blue-700">{projectsPerPM} proj/PM</span>
+                <span className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-purple-50 text-purple-700">{autoQCRate} QC/day</span>
+                <span className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-gray-100 text-gray-600">{totalTeamPMCap.toLocaleString()} PM cap/mo</span>
               </div>
             </div>
           </div>
-        </div>
+        )}
+      </div>
 
-        <div className="flex gap-6 mb-3 flex-wrap">
-          <div><label className="text-xs font-semibold text-gray-700 block mb-1">Client Feedback</label><div className="flex gap-1">{[{l:"Realistic",v:true},{l:"Best Case",v:false}].map(o=>(<button key={o.l} onClick={()=>{setClientDays(o.v);saveSettings({clientDays:o.v});}} className={`px-2 py-1 text-xs rounded font-semibold ${clientDays===o.v?"bg-amber-500 text-white":"bg-gray-100 text-gray-600"}`}>{o.l}</button>))}</div></div>
-          <div><label className="text-xs font-semibold text-gray-700 block mb-1">EAN Band</label><div className="flex gap-1">{["1-5 EANs","5-10 EANs","10-15 EANs"].map(b=>(<button key={b} onClick={()=>{setEanBand(b);saveSettings({eanBand:b});}} className={`px-2 py-0.5 text-xs rounded font-semibold ${eanBand===b?"bg-teal-600 text-white":"bg-gray-100 text-gray-600"}`}>{b.replace(" EANs","")}</button>))}</div></div>
-          <div><label className="text-xs font-semibold text-gray-700 block mb-1">Syndication Complexity</label><div className="flex gap-1">{["Simple","Mid","Complex"].map(c=>(<button key={c} onClick={()=>{setSyndCplx(c);saveSettings({syndCplx:c});}} className={`px-2 py-0.5 text-xs rounded font-semibold ${syndCplx===c?"bg-green-600 text-white":"bg-gray-100 text-gray-600"}`}>{c}</button>))}</div></div>
-        </div>
+      {/* ── MAIN CONTENT ── */}
+      <div className="max-w-7xl mx-auto px-6 py-8">
 
-        <div className="grid grid-cols-3 gap-3">
-          {DIVS.map(div=>{
-            const hc=poolsByDiv[div], mc=monthlyCap[0];
-            const dc=div==="LDB"?mc?.ldb:div==="PPD"?mc?.ppd:mc?.lld;
-            return(
-              <div key={div} className="rounded-xl border border-gray-200 bg-gray-50 p-3">
-                <p className="text-xs font-black uppercase mb-2" style={{color:DIV_COLORS[div]}}>{div} — {period.label}</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-2 text-center"><p className="text-xs text-blue-500">PMs</p><p className="text-lg font-black text-blue-700">{hc.pm.total}</p><p className="text-xs text-blue-400">{hc.pm.fte}F·{hc.pm.fl}FL</p></div>
-                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-2 text-center"><p className="text-xs text-purple-500">Designers</p><p className="text-lg font-black text-purple-700">{hc.des.total}</p><p className="text-xs text-purple-400">{hc.des.fte}F·{hc.des.fl}FL</p></div>
+        {/* Tab header */}
+        {TAB_META[activeTab]&&(
+          <div className="mb-8 pb-6 border-b border-gray-200">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1">{TABS.find(t=>t.id===activeTab)?.label}</p>
+            <h1 className="text-2xl font-bold text-gray-900">{activeTab==="settings"?"Settings":TABS.find(t=>t.id===activeTab)?.label}</h1>
+            <p className="text-base text-gray-500 mt-1.5">{TAB_META[activeTab].description}</p>
+          </div>
+        )}
+
+        {/* ══ SETTINGS PAGE ══════════════════════════════════════════════════ */}
+        {activeTab==="settings"&&(
+          <div className="space-y-8">
+
+            {/* Live outputs strip */}
+            <div className="grid grid-cols-4 gap-4">
+              {[
+                {label:"Concurrent projects / PM",value:projectsPerPM,sub:`${availHrsPM}h productive ÷ ${hoursPerProject}h per project`,color:"#3B82F6"},
+                {label:"Team PM capacity / month",value:totalTeamPMCap.toLocaleString(),sub:`${Math.round(totalPMs)} PMs × ${projectsPerPM} × ${utilPM}%`,color:"#3B82F6"},
+                {label:"QC assets / designer / day",value:autoQCRate,sub:`${qcMinsPerAsset} min per asset on canvas`,color:"#8B5CF6"},
+                {label:"Designer supply / month",value:`${desSupplyHrsPerMonth.toLocaleString()}h`,sub:`${globalHC.des.total} designers × 21d × 8h × ${utilDes}%`,color:"#8B5CF6"},
+              ].map(s=>(
+                <div key={s.label} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                  <p className="text-xs font-medium text-gray-400 mb-2">{s.label}</p>
+                  <p className="text-2xl font-bold" style={{color:s.color}}>{s.value}</p>
+                  <p className="text-xs text-gray-400 mt-1.5">{s.sub}</p>
                 </div>
-                <p className="text-xs text-center mt-1.5 text-gray-500 font-semibold">Cap: {(dc||0).toLocaleString()}/mo assets</p>
+              ))}
+            </div>
+            <Insight type="tip">All changes take effect immediately across every tab. There is no save button — the model recalculates live as you adjust any value.</Insight>
+
+            {/* 1 — Planning period */}
+            <Card>
+              <div className="pb-5 mb-5 border-b border-gray-50">
+                <p className="text-base font-bold text-gray-900">Planning Period</p>
+                <p className="text-sm text-gray-400 mt-0.5">The time window used for all capacity calculations. Affects how working days and project counts are scaled across the tool.</p>
               </div>
-            );
-          })}
-        </div>
-      </div>
+              <div className="grid grid-cols-4 gap-3">
+                {PERIODS.map((p,i)=>(
+                  <button key={p.label} onClick={()=>{setPeriodIdx(i);saveSettings({periodIdx:i});}}
+                    className="p-4 rounded-2xl border-2 text-left transition-all"
+                    style={periodIdx===i?{borderColor:"#1D1D1F",background:"#1D1D1F",color:"white"}:{borderColor:"#E5E7EB",background:"white",color:"#374151"}}>
+                    <p className="text-base font-bold">{p.label}</p>
+                    <p className="text-xs mt-1 opacity-60">{p.workingDays} working days</p>
+                  </button>
+                ))}
+              </div>
+            </Card>
 
-      {/* TABS */}
-      <div className="px-5 pt-3 flex gap-2 flex-wrap border-b border-gray-200 bg-white">
-        {TABS.map(t=>(
-          <button key={t} onClick={()=>setActiveTab(t)} className={`px-4 py-2 text-sm font-semibold rounded-t-lg ${activeTab===t?"bg-blue-600 text-white":"text-gray-600 hover:text-gray-900"}`}>{t}</button>
-        ))}
-      </div>
+            {/* 2 — Utilisation */}
+            <Card>
+              <div className="pb-5 mb-2 border-b border-gray-50">
+                <p className="text-base font-bold text-gray-900">Utilisation</p>
+                <p className="text-sm text-gray-400 mt-0.5">What percentage of a person's working hours are genuinely productive — after accounting for stand-ups, admin, 1:1s and non-project time.</p>
+              </div>
+              <SettingRow label="PM Utilisation" description="Productive time for Project Managers as a % of their contracted hours. Industry benchmark: 75–85% for active delivery roles." value={utilPM} min={60} max={95} onChange={v=>{setUtilPM(v);saveSettings({utilPM:v});}} display={`${utilPM}%`} accent="#3B82F6" derived={`At ${utilPM}% · ${availHrsPM}h productive PM hours per week · ${totalTeamPMCap.toLocaleString()} team projects per month`}/>
+              <SettingRow label="Designer Utilisation" description="Productive time for Integrated Designers as a % of contracted hours. Includes client briefs, QC, master setup — but not internal meetings, training or bench time." value={utilDes} min={60} max={95} onChange={v=>{setUtilDes(v);saveSettings({utilDes:v});}} display={`${utilDes}%`} accent="#8B5CF6" derived={`At ${utilDes}% · ${desSupplyHrsPerMonth.toLocaleString()}h designer supply per month`}/>
+            </Card>
 
-      <div className="p-4 space-y-4 max-w-6xl mx-auto">
+            {/* 3 — PM capacity model */}
+            <Card>
+              <div className="pb-5 mb-2 border-b border-gray-50">
+                <p className="text-base font-bold text-gray-900">PM Capacity Model</p>
+                <p className="text-sm text-gray-400 mt-0.5">How many projects a PM can carry concurrently is derived — not assumed. Set the two inputs and the tool calculates the output. This makes the number defensible in governance and client conversations.</p>
+                <div className="mt-3 p-3 bg-blue-50 rounded-xl inline-flex items-center gap-3">
+                  <span className="text-sm text-blue-600">Formula:</span>
+                  <span className="text-sm font-semibold text-blue-900">{pmHoursPerWeek}h/week × {utilPM}% util = {availHrsPM}h productive</span>
+                  <span className="text-blue-400">÷</span>
+                  <span className="text-sm font-semibold text-blue-900">{hoursPerProject}h per project</span>
+                  <span className="text-blue-400">=</span>
+                  <span className="text-lg font-bold text-blue-700">{projectsPerPM} concurrent</span>
+                </div>
+              </div>
+              <SettingRow label="Working hours per week" description="Total contracted hours per week. Standard full-time is 40h. Adjust if your team works compressed weeks or part-time arrangements." value={pmHoursPerWeek} min={35} max={45} step={0.5} onChange={v=>{setPmHoursPerWeek(v);saveSettings({pmHoursPerWeek:v});}} display={`${pmHoursPerWeek}h`} accent="#3B82F6"/>
+              <SettingRow label="Hours per project per week" description="Average time a PM spends managing one active project each week across its full lifecycle — briefing, chasing, reviews, updates. Industry range: 1.5h (high-volume simple work) to 4h (complex delivery). Default 2.5h is appropriate for eComm asset projects." value={hoursPerProject} min={0.5} max={8} step={0.5} onChange={v=>{setHoursPerProject(v);saveSettings({hoursPerProject:v});}} display={`${hoursPerProject}h`} accent="#3B82F6" derived={`${projectsPerPM} concurrent projects/PM · ${totalTeamPMCap.toLocaleString()} total team capacity per month`}/>
+            </Card>
 
-        {(activeTab==="📊 Capacity"||activeTab==="🗂 Volume")&&(
-          <div className="flex items-center gap-2 flex-wrap">
-            {["All","LDB","PPD","LLD"].map(d=>(<button key={d} onClick={()=>setDivFilter(d)} className={`px-3 py-1 rounded-full text-xs font-bold ${divFilter===d?"bg-gray-900 text-white":"bg-white text-gray-600 border border-gray-300"}`}>{d}</button>))}
-            <span className="text-xs bg-blue-100 text-blue-700 font-bold px-2.5 py-1 rounded-full">📅 {period.label}</span>
+            {/* 4 — Designer throughput */}
+            <Card>
+              <div className="pb-5 mb-2 border-b border-gray-50">
+                <p className="text-base font-bold text-gray-900">Designer Throughput</p>
+                <p className="text-sm text-gray-400 mt-0.5">Controls how quickly designers can produce assets across the two work streams — manual authoring and automated QC. Also sets the cost of building automation master templates before go-live.</p>
+              </div>
+              <SettingRow label="Manual production rate" description="Assets a designer can fully author per day for Complex, Creation and Bespoke projects — no automation shortcut. Includes layout, copy placement, QC and sign-off. Industry range: 15–40/day depending on complexity." value={manualRate} min={10} max={50} onChange={v=>{setManualRate(v);saveSettings({manualRate:v});}} display={`${manualRate} assets/day`} accent="#F97316" derived={`Manual-only capacity: ${manualCap.toLocaleString()} assets / month`}/>
+              <SettingRow label="QC time per automated asset" description="Minutes a designer spends reviewing each automation-generated asset on canvas — checking crop, copy, brand compliance, and applying cascade fixes where needed. Lower = faster QC, higher capacity uplift." value={qcMinsPerAsset} min={0.5} max={10} step={0.5} onChange={v=>{setQcMinsPerAsset(v);saveSettings({qcMinsPerAsset:v});}} display={`${qcMinsPerAsset} min/asset`} accent="#8B5CF6" derived={`${autoQCRate} assets/day on canvas · ${(autoQCRate/manualRate).toFixed(1)}× faster than manual production`}/>
+              <SettingRow label="Masters per automation project" description="How many format master templates a designer builds before automation runs. Typically horizontal, vertical and square = 3. Some campaigns may need more (e.g. adding a stories format)." value={mastersPerProj} min={1} max={6} step={1} onChange={v=>{setMastersPerProj(v);saveSettings({mastersPerProj:v});}} display={`${mastersPerProj} masters`} accent="#8B5CF6"/>
+              <SettingRow label="Hours to build one master" description="Time to design and finalise one format master template before automation can run. Includes layout creation, copy zone setup, brand review and sign-off. Default 3h is a reasonable estimate for eComm asset masters." value={hrsPerMaster} min={1} max={8} step={0.5} onChange={v=>{setHrsPerMaster(v);saveSettings({hrsPerMaster:v});}} display={`${hrsPerMaster}h`} accent="#8B5CF6" derived={`${totalMasterHrs}h designer setup cost per automation project (${mastersPerProj} × ${hrsPerMaster}h)`}/>
+            </Card>
+
+            {/* 5 — SLA defaults */}
+            <Card>
+              <div className="pb-5 mb-5 border-b border-gray-50">
+                <p className="text-base font-bold text-gray-900">SLA Calculator Defaults</p>
+                <p className="text-sm text-gray-400 mt-0.5">These assumptions are used when calculating project timelines in the SLA Calc tab. They can be overridden per project type directly on that tab.</p>
+              </div>
+              <div className="grid grid-cols-3 gap-6">
+                <div>
+                  <p className="text-sm font-semibold text-gray-800 mb-1">Client Feedback Rounds</p>
+                  <p className="text-xs text-gray-400 mb-3">Realistic includes revision rounds based on typical client behaviour. Best Case assumes first-pass approval — use only for optimistic scenario planning.</p>
+                  <div className="flex gap-2 p-1 bg-gray-100 rounded-xl">{[{l:"Realistic",v:true},{l:"Best Case",v:false}].map(o=>(<button key={String(o.v)} onClick={()=>{setClientDays(o.v);saveSettings({clientDays:o.v});}} className="flex-1 py-2 rounded-lg text-sm font-semibold transition-all" style={clientDays===o.v?{background:"white",color:"#1D1D1F",boxShadow:"0 1px 3px rgba(0,0,0,0.1)"}:{color:"#6B7280"}}>{o.l}</button>))}</div>
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-gray-800 mb-1">EAN Band</p>
+                  <p className="text-xs text-gray-400 mb-3">Number of EAN codes in scope for syndication. Drives the duration of the Syndication stage in the SLA Calc.</p>
+                  <div className="flex gap-2">{["1-5 EANs","5-10 EANs","10-15 EANs"].map(b=>(<button key={b} onClick={()=>{setEanBand(b);saveSettings({eanBand:b});}} className="flex-1 py-2 rounded-xl text-xs font-semibold border-2 transition-all" style={eanBand===b?{borderColor:"#0F172A",background:"#0F172A",color:"white"}:{borderColor:"#E5E7EB",color:"#6B7280"}}>{b.replace(" EANs","")}</button>))}</div>
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-gray-800 mb-1">Syndication Complexity</p>
+                  <p className="text-xs text-gray-400 mb-3">Complexity of the Salsify syndication enrichment. Simple = standard fields. Complex = multi-attribute, multi-market.</p>
+                  <div className="flex gap-2">{["Simple","Mid","Complex"].map(c=>(<button key={c} onClick={()=>{setSyndCplx(c);saveSettings({syndCplx:c});}} className="flex-1 py-2 rounded-xl text-xs font-semibold border-2 transition-all" style={syndCplx===c?{borderColor:"#0F172A",background:"#0F172A",color:"white"}:{borderColor:"#E5E7EB",color:"#6B7280"}}>{c}</button>))}</div>
+                </div>
+              </div>
+            </Card>
+
+            {/* 6 — Data source */}
+            <Card>
+              <div className="pb-5 mb-5 border-b border-gray-50">
+                <p className="text-base font-bold text-gray-900">Data Source & Model Notes</p>
+                <p className="text-sm text-gray-400 mt-0.5">Reference information for the underlying forecast data and calculation methodology.</p>
+              </div>
+              <div className="grid grid-cols-2 gap-6">
+                <div className="space-y-3">
+                  <p className="text-sm font-semibold text-gray-700">Forecast Source</p>
+                  <p className="text-xs text-gray-500 leading-relaxed">Oliver Forecast 2026 & Capacity Plan · GRAND TOTAL LLD 50% March tab · Weekly figures aggregated to monthly using actual week-start counts per calendar month.</p>
+                  {[{label:"Jan",w:4,wf:162,mf:648},{label:"Mar",w:5,wf:272,mf:1360},{label:"Jun",w:5,wf:588,mf:2940}].map(r=>(
+                    <div key={r.label} className="flex items-center gap-2 text-xs"><span className="font-semibold text-gray-600 w-6">{r.label}</span><span className="text-gray-400">{r.w} weeks × {r.wf}/wk</span><span className="text-gray-300">=</span><span className="font-semibold text-gray-700">{r.mf.toLocaleString()} projects</span></div>
+                  ))}
+                </div>
+                <div className="space-y-3">
+                  <p className="text-sm font-semibold text-gray-700">Key Formulas</p>
+                  {[
+                    {label:"Monthly forecast",formula:"Oliver weekly × weeks in month"},
+                    {label:"Concurrent proj/PM",formula:`floor(${pmHoursPerWeek}h × ${utilPM}% ÷ ${hoursPerProject}h) = ${projectsPerPM}`},
+                    {label:"Designer supply",formula:`${globalHC.des.total} des × 21d × 8h × ${utilDes}% = ${desSupplyHrsPerMonth.toLocaleString()}h/mo`},
+                    {label:"Master setup",formula:`auto proj × ${mastersPerProj} × ${hrsPerMaster}h = ${totalMasterHrs}h/proj`},
+                    {label:"QC hours",formula:`auto assets × ${qcMinsPerAsset}min ÷ 60`},
+                    {label:"Manual hours",formula:`manual assets ÷ ${manualRate}/day × 8h`},
+                  ].map(f=>(<div key={f.label} className="flex items-start gap-2 text-xs"><span className="font-semibold text-gray-600 w-32 flex-shrink-0">{f.label}</span><span className="text-gray-400">{f.formula}</span></div>))}
+                </div>
+              </div>
+              <div className="mt-5 pt-5 border-t border-gray-50 flex items-center gap-3">
+                <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium ${dbStatus==="connected"?"bg-green-50 text-green-700":"bg-gray-100 text-gray-500"}`}>
+                  <div className={`w-2 h-2 rounded-full ${dbStatus==="connected"?"bg-green-500":"bg-gray-400"}`}/>
+                  {dbStatus==="connected"?"Connected to Supabase — settings and roster are persisted":"Offline mode — changes are in-memory only and will reset on refresh"}
+                </div>
+                {saving&&<span className="text-xs text-gray-400">Saving…</span>}
+              </div>
+            </Card>
           </div>
         )}
 
         {/* ══ CAPACITY ══ */}
-        {activeTab==="📊 Capacity"&&(
-          <div className="space-y-4">
-            <div className="grid grid-cols-4 gap-3">
-              {[{label:`Projects (${divFilter})`,val:cur.tProj,unit:"projects",bg:"bg-blue-600 text-white"},{label:`Assets (${divFilter})`,val:cur.tAssets.toLocaleString(),unit:"assets",bg:"bg-indigo-600 text-white"},{label:`PM Util — ${divFilter}`,val:`${uPM}%`,unit:rag(uPM).dot,bg:`${rag(uPM).bg} ${rag(uPM).tx} border ${rag(uPM).brd}`},{label:`Designer Util — ${divFilter}`,val:`${uDes}%`,unit:rag(uDes).dot,bg:`${rag(uDes).bg} ${rag(uDes).tx} border ${rag(uDes).brd}`}].map(k=>(
-                <div key={k.label} className={`rounded-xl p-3 text-center ${k.bg}`}><p className="text-xs font-semibold opacity-80 leading-tight">{k.label}</p><p className="text-2xl font-black">{k.val}</p><p className="text-xs opacity-70">{k.unit}</p></div>
-              ))}
+        {activeTab==="capacity"&&(
+          <div className="space-y-10">
+            <div>
+              <SectionHeader number="A" title="Team Snapshot by Division" subtitle="How many PMs and Integrated Designers do we have in each division right now?"
+                what="A quick read of headcount by division and contract type. All capacity calculations flow from these numbers."
+                insight={{label:"Keep current",text:"These figures come from the Team tab. Add or remove people there and everything recalculates automatically."}}
+                color="#1D1D1F"/>
+              <div className="grid grid-cols-3 gap-4">
+                {DIVS.map(div=>{const hc=poolsByDiv[div],mc=monthlyCap[0],dc=div==="LDB"?mc?.ldb:div==="PPD"?mc?.ppd:mc?.lld;return(
+                  <Card key={div}>
+                    <div className="flex items-center gap-2 mb-4"><div className="w-2.5 h-2.5 rounded-full" style={{background:DC[div]}}/><span className="text-sm font-semibold text-gray-900">{div}</span></div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="p-3 rounded-xl" style={{background:DC[div]+"10"}}><p className="text-xs text-gray-500 mb-1">Project Managers</p><p className="text-2xl font-bold" style={{color:DC[div]}}>{hc.pm.total}</p><p className="text-xs text-gray-400 mt-0.5">{hc.pm.fte} FTE · {hc.pm.fl} FL</p></div>
+                      <div className="p-3 rounded-xl bg-gray-50"><p className="text-xs text-gray-500 mb-1">Designers</p><p className="text-2xl font-bold text-gray-900">{hc.des.total}</p><p className="text-xs text-gray-400 mt-0.5">{hc.des.fte} FTE · {hc.des.fl} FL</p></div>
+                    </div>
+                    <div className="mt-3 pt-3 border-t border-gray-100"><p className="text-xs text-gray-400">Monthly asset capacity (Jan baseline)</p><p className="text-sm font-semibold text-gray-900 mt-0.5">{(dc||0).toLocaleString()} assets</p></div>
+                  </Card>
+                );})}
+              </div>
             </div>
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-              <h2 className="text-sm font-bold text-gray-800 mb-4">Utilisation — {divFilter} · {period.label}</h2>
-              {[{label:"Project Managers",demand:cur.tPM,avail:ap.pm,u:uPM,hc:poolsByDiv[divFilter==="All"?"All":divFilter].pm},{label:"Integrated Designers",demand:cur.tDes,avail:ap.des,u:uDes,hc:poolsByDiv[divFilter==="All"?"All":divFilter].des}].map(r=>{
-                const rg=rag(r.u);
-                return(<div key={r.label} className="mb-5"><div className="flex justify-between mb-1"><span className="text-sm font-semibold text-gray-700">{r.label} <span className="text-xs text-gray-400">({r.hc.total} · {r.avail}d avail)</span></span><span className={`text-sm font-black ${rg.tx}`}>{rg.dot} {r.u}%</span></div><div className="w-full bg-gray-100 rounded-full h-3"><div className={`h-3 rounded-full ${rg.bar}`} style={{width:`${Math.min(r.u,100)}%`}}/></div>{r.u>100&&<p className="text-xs text-red-600 mt-0.5">⚠️ Over by {r.u-100}%</p>}</div>);
-              })}
+            <div>
+              <SectionHeader number="B" title="Project Manager Capacity vs Forecast"
+                subtitle="Can our PMs handle the number of projects L'Oréal is forecasting each month?"
+                what={`Each PM carries ${projectsPerPM} concurrent projects (${availHrsPM}h available ÷ ${hoursPerProject}h/project). This compares what L'Oréal expects against what our team can cover.`}
+                insight={{label:"Red months",text:"mean demand exceeds PM capacity. Reduce Hrs/project in settings to model higher concurrency, or flag a headcount gap to leadership."}}
+                color="#3B82F6"/>
+              <Card padding="p-0">
+                <div className="px-6 pt-5 pb-4 border-b border-gray-50">
+                  <CardDescriptor title="Three lines compared month by month"
+                    description="Client Forecast = L'Oréal's expectation (Oliver weekly × weeks). Oliver PM Cap = PM capacity baked into Oliver's own forecast. Our PM Cap = what your named team can deliver at the configured hours model."
+                    howToRead="Coverage % = Our PM Cap ÷ Client Forecast. Green ≤85% = comfortable. Amber up to 100% = near capacity. Red >100% = shortfall — action needed."
+                    accent="#3B82F6"/>
+                </div>
+                <div className="px-6 pb-2">
+                  <div className="grid grid-cols-5 gap-4 text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">
+                    <span>Month</span><span className="text-right text-blue-500">Client Forecast</span><span className="text-right text-green-600">Oliver PM Cap</span><span className="text-right text-violet-600">Our PM Cap</span><span className="text-right">Coverage</span>
+                  </div>
+                  <div className="divide-y divide-gray-50 -mx-6 px-6">
+                    {pmAnalysis.map(row=>{const rg=ragU(row.teamCoverPct);return(
+                      <div key={row.month} className="py-3 hover:bg-gray-50 -mx-6 px-6 transition-colors">
+                        <div className="grid grid-cols-5 gap-4 items-center text-sm">
+                          <span className="font-medium text-gray-900">{row.month}<span className="text-gray-400 font-normal ml-1.5 text-xs">{row.weeksInMonth}w</span></span>
+                          <span className="text-right font-semibold text-blue-700">{row.demand.toLocaleString()}</span>
+                          <span className="text-right text-green-700">{row.oliverTotalCap.toLocaleString()}<span className={`ml-1.5 text-xs font-medium ${row.oliverCoverPct>=100?"text-green-600":"text-amber-500"}`}>{row.oliverCoverPct}%</span></span>
+                          <span className="text-right text-violet-700">{row.teamCap.toLocaleString()}<span className="text-xs text-gray-400 ml-1">({row.teamReqPerPM}/PM)</span></span>
+                          <div className="flex items-center justify-end gap-2"><div className="w-16 bg-gray-100 rounded-full h-1.5"><div className="h-1.5 rounded-full" style={{width:`${Math.min(row.teamCoverPct,100)}%`,background:rg.color}}/></div><span className="text-xs font-semibold w-10 text-right" style={{color:rg.text}}>{row.teamCoverPct}%</span></div>
+                        </div>
+                        {row.teamGap<0&&<div className="mt-1.5 flex items-center gap-2"><span className="text-xs text-red-500">Shortfall: {Math.abs(row.teamGap).toLocaleString()} projects</span><span className="text-xs font-semibold text-red-600">· ~{Math.ceil(Math.abs(row.teamGap)/projectsPerPM)} more PMs needed</span></div>}
+                      </div>
+                    );})}
+                  </div>
+                </div>
+                <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl">
+                  <p className="text-xs text-gray-400"><span className="font-medium text-gray-600">Formula:</span> Our PM Cap = {Math.round(totalPMs)} PMs × {projectsPerPM} concurrent × {utilPM}% = {totalTeamPMCap.toLocaleString()} projects/month</p>
+                </div>
+              </Card>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5"><h2 className="text-sm font-bold text-gray-800 mb-3">Projects & Assets by Division</h2><ResponsiveContainer width="100%" height={200}><BarChart data={divSummaryData} margin={{top:5,right:10,left:0,bottom:5}}><CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/><XAxis dataKey="name" tick={{fontSize:12}}/><YAxis tick={{fontSize:11}}/><Tooltip/><Legend/><Bar dataKey="Projects" fill="#3b82f6" radius={[3,3,0,0]}/><Bar dataKey="Assets" fill="#8b5cf6" radius={[3,3,0,0]}/></BarChart></ResponsiveContainer></div>
-              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5"><h2 className="text-sm font-bold text-gray-800 mb-3">Utilisation % by Division</h2><ResponsiveContainer width="100%" height={200}><BarChart data={divSummaryData} margin={{top:5,right:10,left:0,bottom:5}}><CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/><XAxis dataKey="name" tick={{fontSize:12}}/><YAxis tick={{fontSize:11}} unit="%"/><Tooltip formatter={v=>`${v}%`}/><Legend/><Bar dataKey="PMUtil" name="PM %" fill="#3b82f6" radius={[3,3,0,0]}/><Bar dataKey="DesUtil" name="Designer %" fill="#8b5cf6" radius={[3,3,0,0]}/></BarChart></ResponsiveContainer></div>
+            <div>
+              <SectionHeader number="C" title="Designer Capacity — Hours Model"
+                subtitle="Are our designers over or under capacity once we account for master setup, QC and manual production?"
+                what="Designers do three types of work: building automation masters, QC-reviewing auto assets on canvas, and manually authoring complex briefs. This shows total hours demanded vs hours available."
+                insight={{label:"Why this matters",text:"Without this view, automation appears to solve everything. Master setup time is a significant hidden cost — especially at high project volumes. June is the peak pressure point."}}
+                color="#8B5CF6"/>
+              <div className="grid grid-cols-3 gap-4 mb-6">
+                {[
+                  {color:"#6366F1",dot:"A1",label:"Master Setup",desc:`${mastersPerProj} masters × ${hrsPerMaster}h = ${totalMasterHrs}h per auto project — built before automation runs.`},
+                  {color:"#22C55E",dot:"A2",label:"QC Review",desc:`${qcMinsPerAsset} min/asset on canvas = ${autoQCRate} assets/day. Faster than manual but not zero.`},
+                  {color:"#F97316",dot:"B",label:"Manual Production",desc:`${manualRate} assets/day — Complex, Creation and Bespoke. Full authoring, no automation.`},
+                ].map(s=>(
+                  <div key={s.label} className="flex items-start gap-3 p-4 bg-white rounded-2xl border border-gray-100 shadow-sm">
+                    <div className="w-7 h-7 rounded-lg flex items-center justify-center text-white text-xs font-bold flex-shrink-0" style={{background:s.color}}>{s.dot}</div>
+                    <div><p className="text-sm font-semibold text-gray-900">{s.label}</p><p className="text-xs text-gray-400 mt-1 leading-relaxed">{s.desc}</p></div>
+                  </div>
+                ))}
+              </div>
+              <Card className="mb-4">
+                <CardDescriptor title="Designer hours — demand vs supply" description="Stacked bars = hours demanded by work type. Dashed line = available supply. Bars above the line = over capacity." howToRead="Purple = master setup · Green = QC · Orange = manual production · Dashed = supply. If bars consistently exceed the line, raise headcount or reduce volume." accent="#8B5CF6"/>
+                <ResponsiveContainer width="100%" height={250}>
+                  <ComposedChart data={designerChartData} margin={{top:0,right:10,left:0,bottom:0}}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false}/>
+                    <XAxis dataKey="month" tick={{fontSize:12,fill:"#9CA3AF"}} axisLine={false} tickLine={false}/>
+                    <YAxis tick={{fontSize:11,fill:"#9CA3AF"}} axisLine={false} tickLine={false} tickFormatter={v=>v>=1000?`${(v/1000).toFixed(0)}k`:v}/>
+                    <Tooltip contentStyle={{borderRadius:"12px",border:"none",boxShadow:"0 4px 24px rgba(0,0,0,0.08)"}} formatter={(v,n)=>[`${v.toLocaleString()}h`,n]}/>
+                    <Legend iconType="circle" iconSize={8} wrapperStyle={{fontSize:"12px"}}/>
+                    <Bar dataKey="Master Setup" stackId="a" fill="#6366F1"/>
+                    <Bar dataKey="QC Review" stackId="a" fill="#22C55E"/>
+                    <Bar dataKey="Manual Production" stackId="a" fill="#F97316" radius={[3,3,0,0]}/>
+                    <Line type="monotone" dataKey="Supply" name={`Supply (${desSupplyHrsPerMonth.toLocaleString()}h/mo)`} stroke="#1D1D1F" strokeWidth={2} dot={false} strokeDasharray="6 3"/>
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </Card>
+              <Card padding="p-0">
+                <div className="px-6 pt-5 pb-2">
+                  <CardDescriptor title="Designer hours — monthly detail" description="Exact hours consumed by each stream. Util % = total demand ÷ available supply." howToRead="Green ≤85% = comfortable. Amber ≤100% = near limit. Red >100% = over capacity — shows additional designers needed." accent="#8B5CF6"/>
+                </div>
+                <div className="px-6 pb-4">
+                  <div className="grid gap-2 text-xs font-medium text-gray-400 uppercase tracking-wide mb-3" style={{gridTemplateColumns:"3rem 1fr 1fr 1fr 1fr 1fr 1fr 3.5rem"}}>
+                    <span>Month</span><span className="text-right" style={{color:"#6366F1"}}>Auto proj</span><span className="text-right" style={{color:"#6366F1"}}>Master h</span><span className="text-right" style={{color:"#22C55E"}}>QC h</span><span className="text-right" style={{color:"#F97316"}}>Manual h</span><span className="text-right">Demand</span><span className="text-right text-gray-400">Supply</span><span className="text-right">Util</span>
+                  </div>
+                  <div className="divide-y divide-gray-50 -mx-6 px-6">
+                    {designerWorkload.map(row=>{const rg=ragU(row.utilPct);return(
+                      <div key={row.month} className={`py-3 hover:bg-gray-50 -mx-6 px-6 transition-colors ${row.gapHrs<0?"bg-red-50/30":""}`}>
+                        <div className="grid gap-2 items-center text-sm" style={{gridTemplateColumns:"3rem 1fr 1fr 1fr 1fr 1fr 1fr 3.5rem"}}>
+                          <span className="font-medium text-gray-900">{row.month}{row.anyAuto&&<span className="ml-0.5 text-green-400">⚡</span>}</span>
+                          <span className="text-right text-indigo-600 font-medium">{row.autoProj.toLocaleString()}</span>
+                          <span className="text-right font-semibold text-indigo-700">{row.masterSetupHrs.toLocaleString()}h</span>
+                          <span className="text-right font-semibold text-green-700">{row.qcHrs.toLocaleString()}h</span>
+                          <span className="text-right font-semibold text-orange-600">{row.manualProdHrs.toLocaleString()}h</span>
+                          <span className={`text-right font-bold ${row.totalDemandHrs>row.supplyHrs?"text-red-600":"text-gray-900"}`}>{row.totalDemandHrs.toLocaleString()}h</span>
+                          <span className="text-right text-gray-400">{row.supplyHrs.toLocaleString()}h</span>
+                          <div className="flex justify-end"><span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{color:rg.text,background:rg.bg}}>{row.utilPct}%</span></div>
+                        </div>
+                        <div className="flex mt-1.5 rounded-full overflow-hidden h-1">
+                          <div style={{width:`${Math.min(row.masterSetupHrs/row.supplyHrs*100,100)}%`,background:"#6366F1"}}/>
+                          <div style={{width:`${Math.min(row.qcHrs/row.supplyHrs*100,100)}%`,background:"#22C55E"}}/>
+                          <div style={{width:`${Math.min(row.manualProdHrs/row.supplyHrs*100,100)}%`,background:"#F97316"}}/>
+                          <div style={{flex:1,background:"#F3F4F6"}}/>
+                        </div>
+                        {row.gapHrs<0&&<p className="text-xs mt-1.5 text-red-500">Over by {Math.abs(row.gapHrs).toLocaleString()}h — ~{Math.ceil(Math.abs(row.gapHrs)/(21*HOURS_PER_DAY*(utilDes/100)))} additional designer(s) needed</p>}
+                      </div>
+                    );})}
+                  </div>
+                </div>
+                <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl">
+                  <p className="text-xs text-gray-400">Master h = auto proj × {mastersPerProj} × {hrsPerMaster}h &nbsp;·&nbsp; QC h = auto assets × {qcMinsPerAsset}min ÷ 60 &nbsp;·&nbsp; Manual h = manual assets ÷ {manualRate}/day × 8h &nbsp;·&nbsp; Supply = {globalHC.des.total} × 21d × 8h × {utilDes}% = {desSupplyHrsPerMonth.toLocaleString()}h/mo</p>
+                </div>
+              </Card>
             </div>
           </div>
         )}
 
         {/* ══ FORECAST ══ */}
-        {activeTab==="📈 Forecast"&&(
-          <div className="space-y-4">
-            <div className="bg-gray-900 text-white rounded-xl px-4 py-3 flex flex-wrap gap-4 items-center">
-              <div>
-                <p className="text-xs text-gray-400 uppercase font-bold mb-0.5">Data Source</p>
-                <p className="text-xs text-gray-300">Oliver tab · GRAND TOTAL LLD 50% March · Jan–Dec 2026</p>
-                <p className="text-xs text-gray-500 mt-0.5">Monthly projects = Oliver weekly × weeks · PM cap = {Math.round(totalPMs)} PMs × {projectsPerPM} concurrent ({availableHoursPerPM}h ÷ {hoursPerProject}h/proj) × {utilPM}%</p>
+        {activeTab==="forecast"&&(
+          <div className="space-y-8">
+            <div>
+              <SectionHeader number="A" title="Capacity at a Glance" subtitle="Key output numbers — what can the team actually deliver each month?" what="Manual cap = no automation baseline. Apr and Jun figures show how automation raises that ceiling." color="#22C55E"/>
+              <div className="grid grid-cols-4 gap-4">
+                {[{label:"Manual capacity / month",value:manualCap.toLocaleString(),sub:`${manualRate} assets/designer/day`,icon:"✏️"},{label:"Apr capacity (LLD auto)",value:(monthlyCap[3]?.total||0).toLocaleString(),sub:"LLD goes live April",icon:"⚡"},{label:"Jun capacity (all divisions)",value:(monthlyCap[5]?.total||0).toLocaleString(),sub:"All divisions automated",icon:"🤖"},{label:"PM team capacity / month",value:totalTeamPMCap.toLocaleString(),sub:`${projectsPerPM} concurrent/PM`,icon:"👥"}].map(s=>(<div key={s.label} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5"><div className="flex items-start justify-between"><div><p className="text-xs font-medium text-gray-400 mb-1">{s.label}</p><p className="text-2xl font-bold text-gray-900 leading-none">{s.value}</p><p className="text-xs text-gray-400 mt-1.5">{s.sub}</p></div><span className="text-xl">{s.icon}</span></div></div>))}
               </div>
-              <div className="flex gap-3 ml-auto flex-wrap">
-                {[{l:"Manual cap/mo",v:manualCap.toLocaleString(),c:"orange"},{l:"Apr cap",v:(monthlyCap[3]?.total||0).toLocaleString(),c:"green"},{l:"Jun cap",v:(monthlyCap[5]?.total||0).toLocaleString(),c:"green"},{l:"Team PM cap/mo",v:totalTeamPMCap.toLocaleString(),c:"blue"}].map(s=>(
-                  <div key={s.l} className="bg-gray-800 rounded-lg px-3 py-1.5 text-center"><p className="text-xs text-gray-400">{s.l}</p><p className={`text-sm font-black text-${s.c}-400`}>{s.v}</p></div>
+            </div>
+            <div>
+              <SectionHeader number="B" title="Asset Volume — Forecast vs Capacity" subtitle="Does our capacity line stay above L'Oréal's asset targets every month?" what="Bars = L'Oréal's forecast. Green line = team capacity. When the line is above bars, you're covered." insight={{label:"Watch for",text:"Months where bars exceed the green line — that's a capacity gap requiring headcount, earlier go-live, or a volume conversation."}} color="#22C55E"/>
+              <div className="flex items-center gap-3 mb-4 flex-wrap">
+                <div className="flex gap-1 p-1 bg-gray-100 rounded-xl">{[{l:"🤖 With Automation",v:"with"},{l:"Manual Only",v:"without"}].map(o=>(<button key={o.v} onClick={()=>setAutoScenario(o.v)} className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all" style={autoScenario===o.v?{background:"white",color:"#1D1D1F",boxShadow:"0 1px 3px rgba(0,0,0,0.1)"}:{color:"#6B7280"}}>{o.l}</button>))}</div>
+                <span className="text-xs text-gray-400">Division:</span>
+                {["Total","LDB","PPD","LLD"].map(d=>(<button key={d} onClick={()=>setForecastDiv(d)} className="px-3 py-1.5 rounded-full text-xs font-semibold transition-all" style={forecastDiv===d?{background:d==="Total"?"#1D1D1F":DC[d],color:"white"}:{background:"white",color:"#6B7280",border:"1px solid #E5E7EB"}}>{d}</button>))}
+              </div>
+              <Card>
+                <p className="text-sm text-gray-400 mb-5">{autoScenario==="with"?`LLD auto April · LDB/PPD auto June · QC ${autoQCRate}/day vs manual ${manualRate}/day`:`Manual baseline — ${manualRate} assets/designer/day`}</p>
+                <ResponsiveContainer width="100%" height={260}>
+                  <ComposedChart data={activeForecastData} margin={{top:0,right:10,left:0,bottom:0}}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false}/>
+                    <XAxis dataKey="month" tick={{fontSize:12,fill:"#9CA3AF"}} axisLine={false} tickLine={false}/>
+                    <YAxis tick={{fontSize:11,fill:"#9CA3AF"}} axisLine={false} tickLine={false} tickFormatter={v=>v>=1000?`${(v/1000).toFixed(0)}k`:v}/>
+                    <Tooltip contentStyle={{borderRadius:"12px",border:"none",boxShadow:"0 4px 24px rgba(0,0,0,0.08)"}} formatter={(v,n)=>[typeof v==="number"?v.toLocaleString():v,n]}/>
+                    <Legend iconType="circle" iconSize={8} wrapperStyle={{fontSize:"12px"}}/>
+                    <Bar dataKey="targetAssets" name="L'Oréal Asset Target" fill={forecastDiv==="LDB"?DC.LDB:forecastDiv==="PPD"?DC.PPD:forecastDiv==="LLD"?DC.LLD:"#6366F1"} radius={[4,4,0,0]} opacity={0.6}/>
+                    {autoScenario==="with"&&<Line type="stepAfter" dataKey="manualCapacity" name={`Without automation (${manualRate}/day)`} stroke="#D1D5DB" strokeWidth={1.5} strokeDasharray="5 4" dot={false}/>}
+                    <Line type="stepAfter" dataKey="capacityLine" name={autoScenario==="with"?"Capacity with Automation":"Manual Capacity"} stroke="#22C55E" strokeWidth={2.5} dot={false}/>
+                    <Line type="monotone" dataKey="actualAssets" name="Actuals" stroke="#F59E0B" strokeWidth={2.5} dot={{r:4,fill:"#F59E0B"}} connectNulls={false}/>
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </Card>
+            </div>
+            <div>
+              <SectionHeader number="C" title="Coverage by Division" subtitle="Within each division, how does monthly asset capacity compare to L'Oréal's targets?" what="Coverage % = capacity ÷ target. ⚡ marks months where automation is active for that division." color="#6366F1"/>
+              <div className="grid grid-cols-3 gap-4">
+                {[{div:"LDB",capKey:"capacityLdb"},{div:"PPD",capKey:"capacityPpd"},{div:"LLD",capKey:"capacityLld"}].map(({div,capKey})=>(
+                  <Card key={div} padding="p-0">
+                    <div className="px-5 pt-4 pb-3 border-b border-gray-50 flex items-center justify-between"><div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full" style={{background:DC[div]}}/><span className="text-sm font-semibold text-gray-900">{div}</span></div><Badge color="green" size="xs">⚡ Auto from {autoConfig[div].goLiveMonth}</Badge></div>
+                    <div className="px-5 py-3 space-y-2.5">
+                      {forecastChartData.map(row=>{const target=row[div.toLowerCase()],cap=row[capKey],pct=Math.round((cap/target)*100),isAuto=div==="LLD"?row.lldAuto:div==="LDB"?row.ldbAuto:row.ppdAuto,rg=ragU(pct>200?85:pct>100?80:pct);return(<div key={row.month}><div className="flex items-center justify-between text-xs mb-1"><span className="font-medium text-gray-700 flex items-center gap-1">{row.month}{isAuto&&autoScenario==="with"&&<span className="text-green-400">⚡</span>}</span><span className="text-gray-400">{target.toLocaleString()}</span><span className="font-semibold" style={{color:rg.text}}>{pct}%</span></div><div className="w-full h-1.5 rounded-full bg-gray-100"><div className="h-1.5 rounded-full" style={{width:`${Math.min(pct,100)}%`,background:rg.color}}/></div></div>);})}
+                    </div>
+                  </Card>
                 ))}
               </div>
             </div>
-            <div className="flex items-center gap-3 flex-wrap">
-              <p className="text-xs font-bold text-gray-500 uppercase">Scenario:</p>
-              {[{l:"🤖 With Automation",v:"with"},{l:"Manual Baseline",v:"without"}].map(s=>(<button key={s.v} onClick={()=>setAutoScenario(s.v)} className={`px-4 py-2 text-xs font-bold rounded-lg border ${autoScenario===s.v?"bg-gray-900 text-white border-gray-900":"bg-white text-gray-600 border-gray-300"}`}>{s.l}</button>))}
-              <p className="text-xs font-bold text-gray-500 uppercase ml-4">Asset view:</p>
-              {["Total","LDB","PPD","LLD"].map(d=>(<button key={d} onClick={()=>setForecastDiv(d)} className={`px-3 py-1 rounded-full text-xs font-bold ${forecastDiv===d?"text-white":"bg-white text-gray-600 border border-gray-300"}`} style={forecastDiv===d?{background:d==="Total"?"#1f2937":DIV_COLORS[d]}:{}}>{d}</button>))}
-            </div>
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-              <h2 className="text-sm font-bold text-gray-800 mb-1">Asset Volume — {forecastDiv==="Total"?"All Divisions":forecastDiv} · Jan–Dec 2026</h2>
-              <p className="text-xs text-gray-400 mb-3">{autoScenario==="with"?`🤖 Capacity steps up at go-live · Manual: ${manualRate}/day → QC: ${autoQCRate}/day`:`Manual baseline — ${manualRate}/day`}</p>
-              <ResponsiveContainer width="100%" height={260}>
-                <ComposedChart data={activeForecastData} margin={{top:5,right:20,left:0,bottom:5}}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
-                  <XAxis dataKey="month" tick={{fontSize:11}}/><YAxis tick={{fontSize:11}} tickFormatter={v=>v>=1000?`${(v/1000).toFixed(0)}k`:v}/>
-                  <Tooltip formatter={(v,n)=>[typeof v==="number"?v.toLocaleString():v,n]}/><Legend/>
-                  <Bar dataKey="targetAssets" name="Asset Target" fill={forecastDiv==="LDB"?DIV_COLORS.LDB:forecastDiv==="PPD"?DIV_COLORS.PPD:forecastDiv==="LLD"?DIV_COLORS.LLD:"#6366f1"} radius={[3,3,0,0]} opacity={0.75}/>
-                  {autoScenario==="with"&&<Line type="stepAfter" dataKey="manualCapacity" name={`Manual (${manualRate}/day)`} stroke="#f97316" strokeWidth={1.5} strokeDasharray="4 4" dot={false}/>}
-                  <Line type="stepAfter" dataKey="capacityLine" name={autoScenario==="with"?"Capacity with Automation":`Manual (${manualRate}/day)`} stroke="#22c55e" strokeWidth={2.5} dot={false}/>
-                  <Line type="monotone" dataKey="actualAssets" name="Actuals" stroke="#f59e0b" strokeWidth={2.5} dot={{r:4}} connectNulls={false}/>
-                </ComposedChart>
-              </ResponsiveContainer>
-            </div>
-
-            {/* PROJECT VOLUME CARD */}
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-              <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
-                <div>
-                  <h2 className="text-sm font-bold text-gray-800">Project Volume — Oliver Forecast vs PM Capacity</h2>
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    Monthly demand = Oliver weekly (line 31) × weeks &nbsp;·&nbsp;
-                    {projView==="Total"
-                      ? `Your team cap = ${Math.round(totalPMs)} PMs × ${projectsPerPM} concurrent × ${utilPM}% util`
-                      : `Your team cap = ${Math.round(poolsByDiv[projView]?.pm.efte||0)} ${projView} PMs × ${projectsPerPM} concurrent × ${utilPM}% util`
-                    }
-                  </p>
-                </div>
-                <div className="flex gap-1">
-                  {["Total","LDB","PPD","LLD"].map(d=>(<button key={d} onClick={()=>setProjView(d)} className={`px-2.5 py-1 text-xs rounded-full font-bold ${projView===d?"text-white":"bg-gray-100 text-gray-600"}`} style={projView===d?{background:d==="Total"?"#1f2937":DIV_COLORS[d]}:{}}>{d}</button>))}
-                </div>
-              </div>
-
-              {/* Capacity model summary */}
-              <div className="grid grid-cols-3 gap-3 mb-4">
-                <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-center">
-                  <p className="text-xs text-blue-500 font-semibold">Oliver Forecast Demand</p>
-                  <p className="text-lg font-black text-blue-700">Weekly × Weeks</p>
-                  <p className="text-xs text-blue-400">from client forecast (line 31)</p>
-                </div>
-                <div className="bg-green-50 border border-green-100 rounded-xl p-3 text-center">
-                  <p className="text-xs text-green-600 font-semibold">Oliver PM Capacity</p>
-                  <p className="text-lg font-black text-green-700">Perm + Flying (from file)</p>
-                  <p className="text-xs text-green-400">Oliver's own capacity projection</p>
-                </div>
-                <div className="bg-purple-50 border border-purple-100 rounded-xl p-3 text-center">
-                  <p className="text-xs text-purple-600 font-semibold">Your Team Capacity</p>
-                  <p className="text-lg font-black text-purple-700">
-                    {projView==="Total"
-                      ? `${Math.round(totalPMs)} PMs × ${projectsPerPM}`
-                      : `${Math.round(poolsByDiv[projView]?.pm.efte||0)} ${projView} PMs × ${projectsPerPM}`
-                    }
-                  </p>
-                  <p className="text-xs text-purple-400">{availableHoursPerPM}h avail ÷ {hoursPerProject}h/proj = {projectsPerPM} concurrent</p>
-                </div>
-              </div>
-
-              {projView==="Total"?(
-                <>
-                  <div className="grid gap-1 mb-1 text-xs font-bold text-gray-400 uppercase" style={{gridTemplateColumns:"3rem 2rem 4.5rem 4.5rem 3.5rem 4.5rem 3.5rem 3.5rem 4rem"}}>
-                    <p>Month</p><p className="text-center">Wks</p>
-                    <p className="text-right text-blue-500">Demand</p>
-                    <p className="text-right text-green-500">Oliver cap</p>
-                    <p className="text-right text-green-400">Oliver%</p>
-                    <p className="text-right text-purple-500">Team cap</p>
-                    <p className="text-right text-purple-400">Team%</p>
-                    <p className="text-right">Req/PM</p>
-                    <p className="text-right">Gap</p>
-                  </div>
-                  <div className="h-px bg-gray-100 mb-2"/>
-                  <div className="space-y-2">
-                    {pmAnalysis.map(row=>{
-                      const oliverRag=row.oliverCoverPct>=100?"text-green-600":row.oliverCoverPct>=75?"text-amber-600":"text-red-600";
-                      const teamRag  =row.teamCoverPct>=100?"text-green-600":row.teamCoverPct>=75?"text-amber-600":"text-red-600";
-                      const reqRag   =+row.teamReqPerPM>projectsPerPM?"text-red-600":+row.teamReqPerPM>projectsPerPM*0.85?"text-amber-500":"text-green-600";
-                      const barC     =row.teamCoverPct>=100?"bg-green-500":row.teamCoverPct>=75?"bg-amber-400":"bg-red-400";
-                      return(
-                        <div key={row.month}>
-                          <div className="grid gap-1 items-center text-xs" style={{gridTemplateColumns:"3rem 2rem 4.5rem 4.5rem 3.5rem 4.5rem 3.5rem 3.5rem 4rem"}}>
-                            <span className="font-semibold text-gray-700">{row.month}</span>
-                            <span className="text-center text-gray-400">{row.weeksInMonth}w</span>
-                            <span className="text-right font-black text-blue-700">{row.demand.toLocaleString()}</span>
-                            <span className="text-right font-semibold text-green-600">{row.oliverTotalCap.toLocaleString()}</span>
-                            <span className={`text-right font-bold ${oliverRag}`}>{row.oliverCoverPct}%</span>
-                            <span className="text-right font-semibold text-purple-600">{row.teamCap.toLocaleString()}</span>
-                            <span className={`text-right font-bold ${teamRag}`}>{row.teamCoverPct}%</span>
-                            <span className={`text-right font-bold ${reqRag}`}>{row.teamReqPerPM}</span>
-                            <span className={`text-right font-bold ${row.teamGap>=0?"text-green-600":"text-red-500"}`}>{row.teamGap>=0?`+${row.teamGap.toLocaleString()}`:row.teamGap.toLocaleString()}</span>
-                          </div>
-                          <div className="w-full bg-gray-100 rounded h-1.5 mt-0.5"><div className={`h-1.5 rounded ${barC}`} style={{width:`${Math.min(row.teamCoverPct,100)}%`}}/></div>
-                          {row.teamGap<0&&<p className="text-xs text-red-500 text-right mt-0.5">Shortfall: {Math.abs(row.teamGap).toLocaleString()} · need ~{Math.ceil(Math.abs(row.teamGap)/projectsPerPM)} more PMs</p>}
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div className="mt-3 pt-3 border-t border-gray-100 grid grid-cols-2 gap-3 text-xs">
-                    <div className="space-y-1">
-                      <p className="font-bold text-gray-600">PM capacity model</p>
-                      <p>{pmHoursPerWeek}h/week × {utilPM}% util = <strong>{availableHoursPerPM}h productive</strong></p>
-                      <p>{availableHoursPerPM}h ÷ {hoursPerProject}h/project = <strong className="text-blue-600">{projectsPerPM} concurrent projects/PM</strong></p>
-                      <p>{Math.round(totalPMs)} PMs × {projectsPerPM} = <strong className="text-purple-600">{totalTeamPMCap.toLocaleString()} projects/mo cap</strong></p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="font-bold text-gray-600">Jun peak</p>
-                      <p>Weekly demand: <strong className="text-blue-600">{FM[5].weeklyForecast} projects</strong></p>
-                      <p>Monthly: <strong className="text-blue-600">{FM[5].monthlyForecast.toLocaleString()}</strong> ({FM[5].weeksInMonth} weeks)</p>
-                      <p>Req/PM: <strong className={+((FM[5].monthlyForecast/totalPMs)||0).toFixed(1)>projectsPerPM?"text-red-600":"text-green-600"}>{totalPMs>0?(FM[5].monthlyForecast/totalPMs).toFixed(1):"—"}</strong> vs your threshold of <strong>{projectsPerPM}</strong></p>
-                    </div>
-                  </div>
-                </>
-              ):(
-                <>
-                  <div className="grid grid-cols-5 gap-1 mb-1 text-xs font-bold text-gray-400 uppercase">
-                    <p>Month</p><p className="text-right">Wkly/Req</p><p className="text-right text-blue-500">Monthly</p>
-                    <p className="text-right text-purple-500">Team cap</p><p className="text-right">Cover %</p>
-                  </div>
-                  <div className="h-px bg-gray-100 mb-2"/>
-                  <div className="space-y-1.5">
-                    {FM.map(row=>{
-                      const divPMs = poolsByDiv[projView]?.pm.efte||0;
-                      const monthlyDiv = Math.round(row[DIV_PROJ_KEY[projView]] * row.weeksInMonth);
-                      const divTeamCap = Math.round(divPMs * projectsPerPM * (utilPM/100));
-                      const pct = monthlyDiv>0?Math.round((divTeamCap/monthlyDiv)*100):0;
-                      const reqPerPM = divPMs>0?(monthlyDiv/divPMs).toFixed(1):"—";
-                      const ragTx=pct>=100?"text-green-600":pct>=75?"text-amber-600":"text-red-600";
-                      const reqRag=+reqPerPM>projectsPerPM?"text-red-600":"text-green-600";
-                      const barC=pct>=100?"bg-green-500":pct>=75?"bg-amber-400":"bg-red-400";
-                      return(
-                        <div key={row.month}>
-                          <div className="grid grid-cols-5 gap-1 items-center text-xs">
-                            <span className="font-semibold text-gray-700">{row.month}</span>
-                            <span className={`text-right font-bold ${reqRag}`}>{row[DIV_PROJ_KEY[projView]]}/wk · {reqPerPM}/PM</span>
-                            <span className="text-right font-black" style={{color:DIV_COLORS[projView]}}>{monthlyDiv.toLocaleString()}</span>
-                            <span className="text-right font-semibold text-purple-600">{divTeamCap.toLocaleString()}</span>
-                            <span className={`text-right font-bold ${ragTx}`}>{pct}%</span>
-                          </div>
-                          <div className="w-full bg-gray-100 rounded h-1 mt-0.5"><div className={`h-1 rounded ${barC}`} style={{width:`${Math.min(pct,100)}%`}}/></div>
-                          {divTeamCap<monthlyDiv&&<p className="text-xs text-red-500 text-right mt-0.5">Gap: {(monthlyDiv-divTeamCap).toLocaleString()}</p>}
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <p className="text-xs text-gray-400 mt-3">
-                    {projView}: {Math.round(poolsByDiv[projView]?.pm.efte||0)} PMs × {projectsPerPM} concurrent ({availableHoursPerPM}h ÷ {hoursPerProject}h/proj) × {utilPM}% = {Math.round((poolsByDiv[projView]?.pm.efte||0)*projectsPerPM*(utilPM/100)).toLocaleString()} cap/mo
-                  </p>
-                </>
-              )}
-            </div>
-
-            {/* Asset coverage cards */}
-            <div className="grid grid-cols-3 gap-4">
-              {[{div:"LDB",capKey:"capacityLdb"},{div:"PPD",capKey:"capacityPpd"},{div:"LLD",capKey:"capacityLld"}].map(({div,capKey})=>(
-                <div key={div} className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4">
-                  <div className="flex items-center justify-between mb-3"><h3 className="font-black text-gray-900 text-sm">{div} — Asset Coverage</h3><span className="text-xs px-2 py-0.5 rounded-full font-bold bg-green-100 text-green-700">🤖 {autoConfig[div].goLiveMonth}</span></div>
-                  <div className="grid grid-cols-4 gap-1 mb-1 text-xs font-bold text-gray-400 uppercase"><p>Mo</p><p className="text-right">Target</p><p className="text-right">Cap</p><p className="text-right">%</p></div>
-                  <div className="h-px bg-gray-100 mb-2"/>
-                  <div className="space-y-1.5">
-                    {forecastChartData.map(row=>{
-                      const target=row[div.toLowerCase()],cap=row[capKey],pct=Math.round((cap/target)*100);
-                      const isAuto=div==="LLD"?row.lldAuto:div==="LDB"?row.ldbAuto:row.ppdAuto;
-                      const ragTx=pct>=200?"text-green-600":pct>=100?"text-green-500":pct>=75?"text-amber-600":"text-red-600";
-                      const barC=pct>=100?"bg-green-500":pct>=75?"bg-amber-400":"bg-red-400";
-                      return(<div key={row.month}><div className="grid grid-cols-4 gap-1 items-center text-xs"><span className="font-semibold text-gray-700 flex items-center gap-1">{row.month}{isAuto&&autoScenario==="with"&&<span className="text-green-500">🤖</span>}</span><span className="text-right text-gray-500">{target.toLocaleString()}</span><span className="text-right font-semibold text-gray-700">{cap.toLocaleString()}</span><span className={`text-right font-bold ${ragTx}`}>{pct}%</span></div><div className="w-full bg-gray-100 rounded h-1 mt-0.5"><div className={`h-1 rounded ${barC}`} style={{width:`${Math.min(pct,100)}%`}}/></div></div>);
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Monthly detail table */}
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-              <div className="flex items-center justify-between mb-3"><h2 className="text-sm font-bold text-gray-800">Monthly Detail — Asset Forecast vs Capacity vs Actuals</h2><p className="text-xs text-gray-400">Enter actuals in amber cells</p></div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs" style={{tableLayout:"fixed"}}>
-                  <colgroup><col style={{width:"44px"}}/><col style={{width:"66px"}}/><col style={{width:"58px"}}/><col style={{width:"56px"}}/><col style={{width:"56px"}}/><col style={{width:"56px"}}/><col style={{width:"56px"}}/><col style={{width:"56px"}}/><col style={{width:"56px"}}/><col style={{width:"28px"}}/></colgroup>
-                  <thead>
-                    <tr className="text-gray-500 uppercase text-xs bg-gray-50"><th className="py-2 text-left pl-2">Mo</th><th className="py-2 text-center bg-blue-50 text-blue-600" colSpan={2}>Total</th><th className="py-2 text-center" style={{background:DIV_COLORS.LDB+"22",color:DIV_COLORS.LDB}} colSpan={2}>LDB</th><th className="py-2 text-center" style={{background:DIV_COLORS.PPD+"22",color:DIV_COLORS.PPD}} colSpan={2}>PPD</th><th className="py-2 text-center" style={{background:DIV_COLORS.LLD+"22",color:DIV_COLORS.LLD}} colSpan={2}>LLD</th><th></th></tr>
-                    <tr className="text-gray-400 text-xs border-b border-gray-200 bg-gray-50"><th className="py-1 pl-2"></th><th className="py-1 text-center">Tgt</th><th className="py-1 text-center text-amber-500">Act</th><th className="py-1 text-center">Tgt</th><th className="py-1 text-center text-amber-500">Act</th><th className="py-1 text-center">Tgt</th><th className="py-1 text-center text-amber-500">Act</th><th className="py-1 text-center">Tgt</th><th className="py-1 text-center text-amber-500">Act</th><th></th></tr>
-                  </thead>
-                  <tbody>
-                    {forecastChartData.map((row,i)=>{
-                      const a=actuals[i], cov=Math.round((row.capacityTotal/row.gt)*100);
-                      const rd=cov>=200?"🟢🟢":cov>=100?"🟢":cov>=75?"🟡":"🔴";
-                      const ap2=a.actualAssets?Math.round((a.actualAssets/row.gt)*100):null;
-                      return(
-                        <tr key={row.month} className={`border-t border-gray-100 hover:bg-gray-50 ${row.anyAuto&&autoScenario==="with"?"bg-green-50":""}`}>
-                          <td className="py-2 pl-2 font-bold text-gray-900">{row.month}{row.anyAuto&&autoScenario==="with"&&<span className="ml-1 text-green-500 text-xs">🤖</span>}</td>
-                          <td className="py-2 text-center bg-blue-50"><div className="font-semibold text-blue-700 text-xs">{row.gt.toLocaleString()}</div><div className={`text-xs font-bold ${cov>=100?"text-green-600":cov>=75?"text-amber-500":"text-red-500"}`}>{cov}%</div></td>
-                          <td className="py-2"><input type="number" min="0" value={a.actualAssets||""} onChange={e=>updateActualFn(i,"actualAssets",e.target.value)} placeholder="—" className="w-full text-center text-xs font-bold border border-amber-300 rounded px-1 py-1 bg-amber-50 text-amber-700 focus:outline-none"/>{ap2!==null&&<div className="text-xs font-bold text-amber-600 text-center">{ap2}%</div>}</td>
-                          <td className="py-2 text-center" style={{background:DIV_COLORS.LDB+"0d"}}><span className="font-semibold text-xs" style={{color:DIV_COLORS.LDB}}>{row.ldb.toLocaleString()}</span></td>
-                          <td className="py-2"><input type="number" min="0" value={a.actualLdb||""} onChange={e=>updateActualFn(i,"actualLdb",e.target.value)} placeholder="—" className="w-full text-center text-xs font-bold border border-amber-300 rounded px-1 py-1 bg-amber-50 text-amber-700 focus:outline-none"/></td>
-                          <td className="py-2 text-center" style={{background:DIV_COLORS.PPD+"0d"}}><span className="font-semibold text-xs" style={{color:DIV_COLORS.PPD}}>{row.ppd.toLocaleString()}</span></td>
-                          <td className="py-2"><input type="number" min="0" value={a.actualPpd||""} onChange={e=>updateActualFn(i,"actualPpd",e.target.value)} placeholder="—" className="w-full text-center text-xs font-bold border border-amber-300 rounded px-1 py-1 bg-amber-50 text-amber-700 focus:outline-none"/></td>
-                          <td className="py-2 text-center" style={{background:DIV_COLORS.LLD+"0d"}}><span className="font-semibold text-xs" style={{color:DIV_COLORS.LLD}}>{row.lld.toLocaleString()}</span></td>
-                          <td className="py-2"><input type="number" min="0" value={a.actualLld||""} onChange={e=>updateActualFn(i,"actualLld",e.target.value)} placeholder="—" className="w-full text-center text-xs font-bold border border-amber-300 rounded px-1 py-1 bg-amber-50 text-amber-700 focus:outline-none"/></td>
-                          <td className="py-2 text-center text-xs">{rd}</td>
+            <div>
+              <SectionHeader number="D" title="Month-by-Month Actuals Tracker" subtitle="How are we performing against forecast? Enter real delivery numbers as each month closes." what="Amber cells are editable. The % shows actual as a proportion of L'Oréal's target." insight={{label:"Action required",text:"Update at the start of each month. This is the evidence base for QBR reporting and governance conversations."}} color="#F59E0B"/>
+              <Card padding="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs" style={{tableLayout:"fixed"}}>
+                    <colgroup><col style={{width:"48px"}}/><col style={{width:"70px"}}/><col style={{width:"62px"}}/><col style={{width:"58px"}}/><col style={{width:"58px"}}/><col style={{width:"58px"}}/><col style={{width:"58px"}}/><col style={{width:"58px"}}/><col style={{width:"58px"}}/><col style={{width:"30px"}}/></colgroup>
+                    <thead>
+                      <tr className="bg-gray-50 text-gray-400 uppercase text-xs tracking-wide"><th className="py-3 pl-6 text-left font-medium">Month</th><th className="py-3 text-center bg-blue-50 text-blue-500 font-medium" colSpan={2}>Total</th><th className="py-3 text-center font-medium" style={{background:DC.LDB+"15",color:DC.LDB}} colSpan={2}>LDB</th><th className="py-3 text-center font-medium" style={{background:DC.PPD+"15",color:DC.PPD}} colSpan={2}>PPD</th><th className="py-3 text-center font-medium" style={{background:DC.LLD+"15",color:DC.LLD}} colSpan={2}>LLD</th><th></th></tr>
+                      <tr className="text-gray-400 text-xs border-b border-gray-100 bg-gray-50"><th className="py-2 pl-6"></th><th className="py-2 text-center font-medium">Target</th><th className="py-2 text-center text-amber-500 font-medium">← Actual</th><th className="py-2 text-center font-medium">Target</th><th className="py-2 text-center text-amber-500 font-medium">← Actual</th><th className="py-2 text-center font-medium">Target</th><th className="py-2 text-center text-amber-500 font-medium">← Actual</th><th className="py-2 text-center font-medium">Target</th><th className="py-2 text-center text-amber-500 font-medium">← Actual</th><th></th></tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {forecastChartData.map((row,i)=>{const a=actuals[i],cov=Math.round((row.capacityTotal/row.gt)*100),rd=cov>=100?"🟢":cov>=75?"🟡":"🔴",ap2=a.actualAssets?Math.round((a.actualAssets/row.gt)*100):null;return(
+                        <tr key={row.month} className={`hover:bg-gray-50 ${row.anyAuto&&autoScenario==="with"?"bg-green-50/30":""}`}>
+                          <td className="py-3 pl-6 font-semibold text-gray-900">{row.month}{row.anyAuto&&autoScenario==="with"&&<span className="ml-1 text-green-400">⚡</span>}</td>
+                          <td className="py-3 text-center"><div className="font-semibold text-blue-700">{row.gt.toLocaleString()}</div><div className={`text-xs font-medium mt-0.5 ${cov>=100?"text-green-600":cov>=75?"text-amber-500":"text-red-500"}`}>{cov}%</div></td>
+                          <td className="py-3 pr-1"><input type="number" min="0" value={a.actualAssets||""} onChange={e=>updateActualFn(i,"actualAssets",e.target.value)} placeholder="Enter…" className="w-full text-center text-xs font-semibold border border-amber-200 rounded-lg py-1.5 bg-amber-50 text-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-300"/>{ap2!==null&&<div className="text-xs font-medium text-amber-600 text-center mt-0.5">{ap2}%</div>}</td>
+                          <td className="py-3 text-center font-medium" style={{color:DC.LDB}}>{row.ldb.toLocaleString()}</td>
+                          <td className="py-3 pr-1"><input type="number" min="0" value={a.actualLdb||""} onChange={e=>updateActualFn(i,"actualLdb",e.target.value)} placeholder="Enter…" className="w-full text-center text-xs font-semibold border border-amber-200 rounded-lg py-1.5 bg-amber-50 text-amber-700 focus:outline-none"/></td>
+                          <td className="py-3 text-center font-medium" style={{color:DC.PPD}}>{row.ppd.toLocaleString()}</td>
+                          <td className="py-3 pr-1"><input type="number" min="0" value={a.actualPpd||""} onChange={e=>updateActualFn(i,"actualPpd",e.target.value)} placeholder="Enter…" className="w-full text-center text-xs font-semibold border border-amber-200 rounded-lg py-1.5 bg-amber-50 text-amber-700 focus:outline-none"/></td>
+                          <td className="py-3 text-center font-medium" style={{color:DC.LLD}}>{row.lld.toLocaleString()}</td>
+                          <td className="py-3 pr-1"><input type="number" min="0" value={a.actualLld||""} onChange={e=>updateActualFn(i,"actualLld",e.target.value)} placeholder="Enter…" className="w-full text-center text-xs font-semibold border border-amber-200 rounded-lg py-1.5 bg-amber-50 text-amber-700 focus:outline-none"/></td>
+                          <td className="py-3 text-center">{rd}</td>
                         </tr>
-                      );
-                    })}
-                    <tr className="border-t-2 border-gray-300 bg-gray-50 font-bold text-xs">
-                      <td className="py-2 pl-2">Total</td>
-                      <td className="py-2 text-center text-blue-700 bg-blue-50">{FM.reduce((s,m)=>s+m.gt,0).toLocaleString()}</td>
-                      <td className="py-2 text-center text-amber-600">{actuals.reduce((s,a)=>s+(a.actualAssets||0),0).toLocaleString()}</td>
-                      <td className="py-2 text-center" style={{color:DIV_COLORS.LDB}}>{FM.reduce((s,m)=>s+m.ldb,0).toLocaleString()}</td>
-                      <td className="py-2 text-center text-amber-600">{actuals.reduce((s,a)=>s+(a.actualLdb||0),0).toLocaleString()}</td>
-                      <td className="py-2 text-center" style={{color:DIV_COLORS.PPD}}>{FM.reduce((s,m)=>s+m.ppd,0).toLocaleString()}</td>
-                      <td className="py-2 text-center text-amber-600">{actuals.reduce((s,a)=>s+(a.actualPpd||0),0).toLocaleString()}</td>
-                      <td className="py-2 text-center" style={{color:DIV_COLORS.LLD}}>{FM.reduce((s,m)=>s+m.lld,0).toLocaleString()}</td>
-                      <td className="py-2 text-center text-amber-600">{actuals.reduce((s,a)=>s+(a.actualLld||0),0).toLocaleString()}</td>
-                      <td></td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
+                      );})}
+                      <tr className="border-t-2 border-gray-200 bg-gray-50 font-semibold text-xs">
+                        <td className="py-3 pl-6">Full Year</td>
+                        <td className="py-3 text-center text-blue-700 bg-blue-50">{FM.reduce((s,m)=>s+m.gt,0).toLocaleString()}</td>
+                        <td className="py-3 text-center text-amber-600">{actuals.reduce((s,a)=>s+(a.actualAssets||0),0).toLocaleString()}</td>
+                        <td className="py-3 text-center" style={{color:DC.LDB}}>{FM.reduce((s,m)=>s+m.ldb,0).toLocaleString()}</td>
+                        <td className="py-3 text-center text-amber-600">{actuals.reduce((s,a)=>s+(a.actualLdb||0),0).toLocaleString()}</td>
+                        <td className="py-3 text-center" style={{color:DC.PPD}}>{FM.reduce((s,m)=>s+m.ppd,0).toLocaleString()}</td>
+                        <td className="py-3 text-center text-amber-600">{actuals.reduce((s,a)=>s+(a.actualPpd||0),0).toLocaleString()}</td>
+                        <td className="py-3 text-center" style={{color:DC.LLD}}>{FM.reduce((s,m)=>s+m.lld,0).toLocaleString()}</td>
+                        <td className="py-3 text-center text-amber-600">{actuals.reduce((s,a)=>s+(a.actualLld||0),0).toLocaleString()}</td>
+                        <td></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
             </div>
           </div>
         )}
 
         {/* ══ AUTOMATION ══ */}
-        {activeTab==="🤖 Automation"&&(
-          <div className="space-y-4">
-            <div className="grid grid-cols-3 gap-4">
-              {[{label:"Jan–Mar",sub:"Manual only",cap:monthlyCap[0]?.manualTotal||0,color:"bg-gray-600",note:`${manualRate} assets/day`},{label:"Apr–May",sub:"LLD automated",cap:monthlyCap[3]?.total||0,color:"bg-green-600",note:`LLD blended: ${Math.round(autoConfig.LLD.simplePct*autoQCRate+(1-autoConfig.LLD.simplePct)*manualRate)}/day`},{label:"Jun–Dec",sub:"All automated",cap:monthlyCap[5]?.total||0,color:"bg-emerald-600",note:"All divisions blended"}].map(s=>(<div key={s.label} className={`${s.color} text-white rounded-2xl p-5`}><p className="text-xs font-bold uppercase opacity-70 mb-1">{s.label}</p><p className="text-xs opacity-60 mb-2">{s.sub}</p><p className="text-3xl font-black">{s.cap.toLocaleString()}</p><p className="text-xs opacity-70 mt-1">assets/month</p><p className="text-xs opacity-50 mt-2">{s.note}</p></div>))}
-            </div>
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-              <div className="flex items-center justify-between mb-4"><h2 className="text-sm font-bold text-gray-800">🤖 Automation Settings</h2><div className="flex items-center gap-3"><span className="text-xs text-gray-500">Automation</span><button onClick={()=>setAutoEnabled(v=>!v)} className={`relative inline-flex h-6 w-11 items-center rounded-full ${autoEnabled?"bg-green-500":"bg-gray-300"}`}><span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${autoEnabled?"translate-x-6":"translate-x-1"}`}/></button><span className={`text-xs font-bold ${autoEnabled?"text-green-600":"text-gray-400"}`}>{autoEnabled?"Enabled":"Disabled"}</span></div></div>
-              <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-4"><div className="flex items-center justify-between mb-2"><div><p className="text-sm font-bold text-green-800">QC Rate</p><p className="text-xs text-green-600">Assets/designer/day via canvas · vs manual: {manualRate}/day · {(autoQCRate/manualRate).toFixed(1)}×</p></div><div className="bg-green-600 text-white rounded-xl px-5 py-2 text-center"><p className="text-xs opacity-80">QC/day</p><p className="text-3xl font-black">{autoQCRate}</p></div></div><input type="range" min={50} max={500} step={25} value={autoQCRate} onChange={e=>{setAutoQCRate(+e.target.value);saveSettings({autoQCRate:+e.target.value});}} className="w-full accent-green-600"/></div>
-              <div className="grid grid-cols-3 gap-4">{DIVS.map(div=>{const cfg=autoConfig[div],br=Math.round(cfg.simplePct*autoQCRate+(1-cfg.simplePct)*manualRate);return(<div key={div} className="rounded-xl border border-gray-200 p-4" style={{borderColor:DIV_COLORS[div]+"66"}}><div className="flex items-center justify-between mb-3"><p className="text-sm font-black" style={{color:DIV_COLORS[div]}}>{div}</p>{cfg.goLiveMonth!=="Off"&&<span className="text-xs px-2 py-0.5 rounded-full font-bold text-white" style={{background:DIV_COLORS[div]}}>Go-live: {cfg.goLiveMonth}</span>}</div><div className="mb-3"><label className="text-xs font-semibold text-gray-600 block mb-1">Go-Live Month</label><div className="flex gap-1 flex-wrap">{GO_LIVE_OPTIONS.map(m=>(<button key={m} onClick={()=>updateAuto(div,"goLiveMonth",m)} className={`px-2 py-0.5 text-xs rounded font-semibold ${cfg.goLiveMonth===m?"text-white":"bg-gray-100 text-gray-500"}`} style={cfg.goLiveMonth===m?{background:DIV_COLORS[div]}:{}}>{m}</button>))}</div></div><div className="mb-3"><div className="flex justify-between mb-1"><label className="text-xs font-semibold text-gray-600">Simple %</label><span className="text-sm font-black" style={{color:DIV_COLORS[div]}}>{Math.round(cfg.simplePct*100)}%</span></div><input type="range" min={0} max={1} step={0.05} value={cfg.simplePct} onChange={e=>updateAuto(div,"simplePct",+e.target.value)} className="w-full" style={{accentColor:DIV_COLORS[div]}}/></div><div className="bg-gray-50 rounded-lg p-3 text-center"><p className="text-xs text-gray-500 mb-1">Blended rate</p><p className="text-2xl font-black" style={{color:DIV_COLORS[div]}}>{br}</p><p className="text-xs text-gray-400">assets/day</p></div></div>);})}
+        {activeTab==="automation"&&(
+          <div className="space-y-8">
+            <div>
+              <SectionHeader number="A" title="Automation Phases — Capacity by Period" subtitle="Automation goes live in phases — LLD April, then LDB and PPD June. These show what the team can deliver in each period." what="Compare the three numbers to understand the capacity step-change automation creates." color="#22C55E"/>
+              <div className="flex items-center gap-3 mb-5">
+                <span className="text-sm text-gray-500">Automation</span>
+                <button onClick={()=>setAutoEnabled(v=>!v)} className="relative inline-flex h-7 w-12 items-center rounded-full transition-colors" style={{background:autoEnabled?"#22C55E":"#E5E7EB"}}><span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform ${autoEnabled?"translate-x-6":"translate-x-1"}`}/></button>
+                <span className="text-sm font-medium" style={{color:autoEnabled?"#16A34A":"#9CA3AF"}}>{autoEnabled?"Active — included in all calculations":"Disabled — showing manual baseline"}</span>
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                {[{range:"Jan – Mar",sub:"Manual only",cap:monthlyCap[0]?.manualTotal||0,bg:"#F8F8F8",border:"#E5E7EB",textMain:"#1D1D1F",note:`All assets at ${manualRate} assets/day`},{range:"Apr – May",sub:"LLD automated · LDB & PPD manual",cap:monthlyCap[3]?.total||0,bg:"#ECFDF5",border:"#A7F3D0",textMain:"#065F46",note:`LLD blended: ${Math.round(autoConfig.LLD.simplePct*autoQCRate+(1-autoConfig.LLD.simplePct)*manualRate)} assets/day`},{range:"Jun – Dec",sub:"All three divisions automated",cap:monthlyCap[5]?.total||0,bg:"#1D1D1F",border:"#1D1D1F",textMain:"white",note:"Maximum capacity — full automation"}].map(s=>(<div key={s.range} className="rounded-2xl border p-6" style={{background:s.bg,borderColor:s.border}}><p className="text-xs font-medium mb-1" style={{color:s.textMain,opacity:0.6}}>{s.range}</p><p className="text-sm font-semibold mb-3" style={{color:s.textMain,opacity:0.8}}>{s.sub}</p><p className="text-3xl font-bold mb-1" style={{color:s.textMain}}>{s.cap.toLocaleString()}</p><p className="text-sm mb-3" style={{color:s.textMain,opacity:0.6}}>assets / month</p><p className="text-xs font-medium" style={{color:s.textMain,opacity:0.45}}>{s.note}</p></div>))}
               </div>
             </div>
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5"><h2 className="text-sm font-bold text-gray-800 mb-4">Project Type — Automation Eligibility</h2><div className="grid grid-cols-3 gap-3">{mix.map(m=>{const pt=PT_BASE.find(p=>p.id===m.id);if(!pt)return null;return(<div key={m.id} className={`rounded-xl border p-3 ${m.autoEligible?"border-green-200 bg-green-50":"border-gray-200 bg-gray-50"}`}><div className="flex items-center justify-between"><div className="flex items-center gap-2 flex-1 min-w-0"><div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{background:pt.color}}/><span className="text-xs font-semibold text-gray-800 truncate">{pt.label}</span></div><div className="flex items-center gap-1.5 ml-2 flex-shrink-0"><span className={`text-xs font-bold ${m.autoEligible?"text-green-600":"text-gray-400"}`}>{m.autoEligible?"🤖":"Manual"}</span><button onClick={()=>toggleAuto(m.id)} className={`relative inline-flex h-5 w-9 items-center rounded-full ${m.autoEligible?"bg-green-500":"bg-gray-300"}`}><span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${m.autoEligible?"translate-x-4":"translate-x-0.5"}`}/></button></div></div></div>);})}</div></div>
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5"><h2 className="text-sm font-bold text-gray-800 mb-1">Capacity Step-Change — Jan–Dec 2026</h2><p className="text-xs text-gray-400 mb-3">Grey = manual (stops at go-live) · Green = with automation (starts at go-live)</p><ResponsiveContainer width="100%" height={280}><ComposedChart data={forecastChartData} margin={{top:5,right:20,left:0,bottom:5}}><CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/><XAxis dataKey="month" tick={{fontSize:11}}/><YAxis tick={{fontSize:11}} tickFormatter={v=>v>=1000?`${(v/1000).toFixed(0)}k`:v}/><Tooltip formatter={(v,n)=>[typeof v==="number"?v.toLocaleString():v,n]}/><Legend/><Bar dataKey="gt" name="Asset Target" fill="#6366f1" opacity={0.6} radius={[3,3,0,0]}/><Line type="stepAfter" dataKey="preAutoCapacity" name={`Manual (${manualRate}/day)`} stroke="#9ca3af" strokeWidth={2.5} strokeDasharray="5 5" dot={false} connectNulls={false}/><Line type="stepAfter" dataKey="postAutoCapacity" name="Capacity with Automation" stroke="#22c55e" strokeWidth={2.5} dot={false} connectNulls={false}/></ComposedChart></ResponsiveContainer></div>
+            <div>
+              <SectionHeader number="B" title="QC Rate" subtitle="How fast can designers review auto-generated assets on canvas?" what={`At ${qcMinsPerAsset} min per asset = ${autoQCRate} assets/day — ${(autoQCRate/manualRate).toFixed(1)}× faster than manual. Adjust the 'QC time' slider in the quick settings bar.`} insight={{label:"Calibrate after go-live",text:"Track actual QC time per asset for the first 4 weeks of LLD automation and update the QC time slider. Even small changes have a large downstream effect."}} color="#8B5CF6"/>
+              <Card>
+                <div className="flex items-center justify-between">
+                  <div><p className="text-sm text-gray-400">Set via the <strong>QC time</strong> slider in the quick settings bar above, or in the Settings tab.</p></div>
+                  <div className="text-right p-5 rounded-2xl bg-gray-50 ml-6"><p className="text-5xl font-bold text-gray-900">{autoQCRate}</p><p className="text-sm text-gray-500 mt-1">assets / designer / day</p><p className="text-xs text-gray-400 mt-1">{qcMinsPerAsset} min per asset</p></div>
+                </div>
+              </Card>
+            </div>
+            <div>
+              <SectionHeader number="C" title="Division Configuration" subtitle="Set the go-live month and Simple% for each division." what="Go-live month = when automation activates. Simple % = proportion of work that is automation-eligible. Higher = bigger uplift." color="#1D1D1F"/>
+              <div className="grid grid-cols-3 gap-4">
+                {DIVS.map(div=>{const cfg=autoConfig[div],br=Math.round(cfg.simplePct*autoQCRate+(1-cfg.simplePct)*manualRate),uplift=Math.round((br/manualRate-1)*100);return(
+                  <Card key={div}>
+                    <div className="flex items-center justify-between mb-5"><div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full" style={{background:DC[div]}}/><span className="text-base font-semibold text-gray-900">{div}</span></div>{cfg.goLiveMonth!=="Off"&&<Badge color={div==="LDB"?"amber":div==="PPD"?"purple":"blue"} size="xs">Go-live: {cfg.goLiveMonth}</Badge>}</div>
+                    <div className="mb-4"><p className="text-xs font-medium text-gray-500 mb-2">Go-Live Month</p><div className="flex gap-1 flex-wrap">{GO_LIVE_OPTIONS.map(m=>(<button key={m} onClick={()=>updateAuto(div,"goLiveMonth",m)} className="px-2 py-1 text-xs rounded-lg font-medium transition-all" style={cfg.goLiveMonth===m?{background:DC[div],color:"white"}:{background:"#F3F4F6",color:"#6B7280"}}>{m}</button>))}</div></div>
+                    <div className="mb-5"><div className="flex justify-between mb-1.5"><p className="text-xs font-medium text-gray-500">Simple % — auto-eligible proportion</p><span className="text-sm font-bold" style={{color:DC[div]}}>{Math.round(cfg.simplePct*100)}%</span></div><input type="range" min={0} max={1} step={0.05} value={cfg.simplePct} onChange={e=>updateAuto(div,"simplePct",+e.target.value)} className="w-full h-1.5 rounded-full" style={{accentColor:DC[div]}}/></div>
+                    <div className="p-4 rounded-xl text-center" style={{background:DC[div]+"10"}}><p className="text-xs font-medium mb-1" style={{color:DC[div]}}>Blended rate when live</p><p className="text-2xl font-bold" style={{color:DC[div]}}>{br}</p><p className="text-xs text-gray-500 mt-0.5">assets / designer / day</p><p className="text-xs font-semibold text-green-600 mt-1.5">+{uplift}% vs manual baseline</p></div>
+                  </Card>
+                );})}
+              </div>
+            </div>
+            <div>
+              <SectionHeader number="D" title="Project Type Eligibility" subtitle="Which brief types go through automation, and which are authored manually?" what="Auto-eligible types use the QC rate once go-live is active. Manual types always use the manual production rate." color="#10B981"/>
+              <Card>
+                <div className="grid grid-cols-3 gap-3">
+                  {mix.map(m=>{const pt=PT_BASE.find(p=>p.id===m.id);if(!pt)return null;return(<div key={m.id} className="flex items-center justify-between p-3.5 rounded-xl border transition-all" style={m.autoEligible?{background:"#F0FDF4",borderColor:"#BBF7D0"}:{background:"#F9FAFB",borderColor:"#E5E7EB"}}><div className="flex items-center gap-2.5 flex-1 min-w-0"><div className="w-2 h-2 rounded-full flex-shrink-0" style={{background:pt.color}}/><span className="text-xs font-medium text-gray-800 truncate">{pt.label}</span></div><div className="flex items-center gap-2 ml-2 flex-shrink-0"><span className={`text-xs font-medium ${m.autoEligible?"text-green-700":"text-gray-400"}`}>{m.autoEligible?"Auto":"Manual"}</span><button onClick={()=>toggleAuto(m.id)} className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors" style={{background:m.autoEligible?"#22C55E":"#D1D5DB"}}><span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform ${m.autoEligible?"translate-x-4":"translate-x-0.5"}`}/></button></div></div>);})}
+                </div>
+              </Card>
+            </div>
+            <div>
+              <SectionHeader number="E" title="Capacity Step-Change Chart" subtitle="How automation transforms what the team can deliver across 2026." what="Grey dashed = manual baseline (stops at go-live). Green solid = with automation (starts at go-live). Green line should always be above the purple bars." color="#22C55E"/>
+              <Card>
+                <ResponsiveContainer width="100%" height={260}>
+                  <ComposedChart data={forecastChartData} margin={{top:0,right:10,left:0,bottom:0}}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false}/>
+                    <XAxis dataKey="month" tick={{fontSize:12,fill:"#9CA3AF"}} axisLine={false} tickLine={false}/>
+                    <YAxis tick={{fontSize:11,fill:"#9CA3AF"}} axisLine={false} tickLine={false} tickFormatter={v=>v>=1000?`${(v/1000).toFixed(0)}k`:v}/>
+                    <Tooltip contentStyle={{borderRadius:"12px",border:"none",boxShadow:"0 4px 24px rgba(0,0,0,0.08)"}} formatter={(v,n)=>[typeof v==="number"?v.toLocaleString():v,n]}/>
+                    <Legend iconType="circle" iconSize={8} wrapperStyle={{fontSize:"12px"}}/>
+                    <Bar dataKey="gt" name="L'Oréal Asset Target" fill="#6366F1" opacity={0.5} radius={[4,4,0,0]}/>
+                    <Line type="stepAfter" dataKey="preAutoCapacity" name={`Manual baseline (${manualRate}/day)`} stroke="#D1D5DB" strokeWidth={2} strokeDasharray="6 4" dot={false} connectNulls={false}/>
+                    <Line type="stepAfter" dataKey="postAutoCapacity" name="Capacity with automation" stroke="#22C55E" strokeWidth={2.5} dot={false} connectNulls={false}/>
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </Card>
+            </div>
           </div>
         )}
 
         {/* ══ VOLUME ══ */}
-        {activeTab==="🗂 Volume"&&(
-          <div className="space-y-4">
-            <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5"><p className="text-sm font-bold text-blue-800">📅 Project intake — {period.label}</p><p className="text-xs text-blue-500 mt-0.5">Adjust project counts and assets/brief per division. Toggle automation eligibility in the 🤖 tab.</p></div>
-            <div className="grid grid-cols-3 gap-4">
-              {DIVS.map(div=>{const da=mixAnalysis.find(x=>x.div===div),p=activePools[div];const uP=uc(da.tPM,p.pm),uD=uc(da.tDes,p.des),rP=rag(uP),rD=rag(uD);return(<div key={div} className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4"><div className="flex justify-between mb-2"><h3 className="font-black text-gray-900">{div}</h3><div className="text-right"><p className="text-2xl font-black text-blue-700">{da.tProj}</p><p className="text-xs text-gray-400">~{Math.round(da.tProj/period.months)}/mo</p></div></div><p className="text-xs text-indigo-700 font-bold mb-3">~{da.tAssets.toLocaleString()} assets</p>{[{l:"PM",u:uP,r:rP},{l:"Designer",u:uD,r:rD}].map(x=>(<div key={x.l} className="mb-2"><div className="flex justify-between text-xs mb-0.5"><span className="text-gray-600">{x.l}</span><span className={`font-bold ${x.r.tx}`}>{x.u}%</span></div><div className="w-full bg-gray-100 rounded h-2"><div className={`h-2 rounded ${x.r.bar}`} style={{width:`${Math.min(x.u,100)}%`}}/></div></div>))}</div>);})}
-            </div>
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-              <div className="flex items-center justify-between mb-3"><h2 className="text-sm font-bold text-gray-800">Adjust Intake & Asset Counts — {period.label}</h2>{hasSupabase&&<span className="text-xs text-green-600 font-semibold">✓ Auto-saved</span>}</div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead><tr className="bg-gray-50 text-gray-500 uppercase"><th className="px-3 py-2 text-left">Project Type</th><th className="px-3 py-2 text-center">Auto?</th><th className="px-3 py-2 text-center" style={{color:DIV_COLORS.LDB}}>LDB proj</th><th className="px-3 py-2 text-center" style={{color:DIV_COLORS.LDB}}>LDB assets</th><th className="px-3 py-2 text-center" style={{color:DIV_COLORS.PPD}}>PPD proj</th><th className="px-3 py-2 text-center" style={{color:DIV_COLORS.PPD}}>PPD assets</th><th className="px-3 py-2 text-center" style={{color:DIV_COLORS.LLD}}>LLD proj</th><th className="px-3 py-2 text-center" style={{color:DIV_COLORS.LLD}}>LLD assets</th><th className="px-3 py-2 text-center">Total</th><th className="px-3 py-2 text-center">Assets</th></tr></thead>
-                  <tbody>
-                    {mix.map(m=>{
-                      const pt=PT_BASE.find(p=>p.id===m.id);
-                      const rowTot=m.LDB+m.PPD+m.LLD;
-                      const rowAssets=(m.assetsLDB*m.LDB)+(m.assetsPPD*m.PPD)+(m.assetsLLD*m.LLD);
-                      return(
-                        <tr key={m.id} className={`border-t border-gray-100 hover:bg-gray-50 ${m.autoEligible?"bg-green-50":""}`}>
-                          <td className="px-3 py-2"><div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full" style={{background:pt?.color||"#666"}}/><span className="font-semibold">{pt?.label||m.id}</span></div></td>
-                          <td className="px-3 py-2 text-center"><span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${m.autoEligible?"bg-green-100 text-green-700":"bg-gray-100 text-gray-400"}`}>{m.autoEligible?"🤖":"Manual"}</span></td>
-                          <td className="px-3 py-2 text-center"><div className="flex items-center justify-center gap-1"><button onClick={()=>updateMixCount(m.id,"LDB",m.LDB-1)} className="w-5 h-5 rounded bg-gray-200 text-xs font-bold">−</button><span className="w-6 text-center font-black" style={{color:DIV_COLORS.LDB}}>{m.LDB}</span><button onClick={()=>updateMixCount(m.id,"LDB",m.LDB+1)} className="w-5 h-5 rounded bg-gray-200 text-xs font-bold">+</button></div></td>
-                          <td className="px-3 py-2 text-center"><input type="number" min="1" value={m.assetsLDB} onChange={e=>updateMixAssets(m.id,"assetsLDB",+e.target.value)} className="w-16 text-center text-xs font-bold border rounded px-1 py-1 focus:outline-none" style={{borderColor:DIV_COLORS.LDB+"66",color:DIV_COLORS.LDB}}/><p className="text-xs text-gray-400">{(m.assetsLDB*m.LDB).toLocaleString()}</p></td>
-                          <td className="px-3 py-2 text-center"><div className="flex items-center justify-center gap-1"><button onClick={()=>updateMixCount(m.id,"PPD",m.PPD-1)} className="w-5 h-5 rounded bg-gray-200 text-xs font-bold">−</button><span className="w-6 text-center font-black" style={{color:DIV_COLORS.PPD}}>{m.PPD}</span><button onClick={()=>updateMixCount(m.id,"PPD",m.PPD+1)} className="w-5 h-5 rounded bg-gray-200 text-xs font-bold">+</button></div></td>
-                          <td className="px-3 py-2 text-center"><input type="number" min="1" value={m.assetsPPD} onChange={e=>updateMixAssets(m.id,"assetsPPD",+e.target.value)} className="w-16 text-center text-xs font-bold border rounded px-1 py-1 focus:outline-none" style={{borderColor:DIV_COLORS.PPD+"66",color:DIV_COLORS.PPD}}/><p className="text-xs text-gray-400">{(m.assetsPPD*m.PPD).toLocaleString()}</p></td>
-                          <td className="px-3 py-2 text-center"><div className="flex items-center justify-center gap-1"><button onClick={()=>updateMixCount(m.id,"LLD",m.LLD-1)} className="w-5 h-5 rounded bg-gray-200 text-xs font-bold">−</button><span className="w-6 text-center font-black" style={{color:DIV_COLORS.LLD}}>{m.LLD}</span><button onClick={()=>updateMixCount(m.id,"LLD",m.LLD+1)} className="w-5 h-5 rounded bg-gray-200 text-xs font-bold">+</button></div></td>
-                          <td className="px-3 py-2 text-center"><input type="number" min="1" value={m.assetsLLD} onChange={e=>updateMixAssets(m.id,"assetsLLD",+e.target.value)} className="w-16 text-center text-xs font-bold border rounded px-1 py-1 focus:outline-none" style={{borderColor:DIV_COLORS.LLD+"66",color:DIV_COLORS.LLD}}/><p className="text-xs text-gray-400">{(m.assetsLLD*m.LLD).toLocaleString()}</p></td>
-                          <td className="px-3 py-2 text-center font-black text-blue-700">{rowTot}</td>
-                          <td className="px-3 py-2 text-center font-bold text-indigo-700">{rowAssets.toLocaleString()}</td>
-                        </tr>
-                      );
-                    })}
-                    <tr className="border-t-2 border-gray-300 bg-gray-50 font-bold text-xs">
-                      <td colSpan={2} className="px-3 py-2">TOTAL</td>
-                      <td className="px-3 py-2 text-center" style={{color:DIV_COLORS.LDB}}>{mix.reduce((s,m)=>s+m.LDB,0)}</td><td className="px-3 py-2 text-center text-gray-400">—</td>
-                      <td className="px-3 py-2 text-center" style={{color:DIV_COLORS.PPD}}>{mix.reduce((s,m)=>s+m.PPD,0)}</td><td className="px-3 py-2 text-center text-gray-400">—</td>
-                      <td className="px-3 py-2 text-center" style={{color:DIV_COLORS.LLD}}>{mix.reduce((s,m)=>s+m.LLD,0)}</td><td className="px-3 py-2 text-center text-gray-400">—</td>
-                      <td className="px-3 py-2 text-center text-blue-700">{combined.tProj}</td>
-                      <td className="px-3 py-2 text-center text-indigo-700">{combined.tAssets.toLocaleString()}</td>
-                    </tr>
-                  </tbody>
-                </table>
+        {activeTab==="volume"&&(
+          <div className="space-y-8">
+            <div>
+              <SectionHeader number="A" title="Project Intake by Type & Division" subtitle="What is the expected mix of project types, and how many assets does each brief typically contain?" what="Project counts × assets per brief = total asset volume. The capacity model uses this to calculate designer demand and whether the team can handle it." insight={{label:"Improve accuracy",text:"Ask DMs to update 'assets per brief' based on actual historical brief sizes — this single action dramatically improves model accuracy."}} color="#6366F1"/>
+              <div className="grid grid-cols-3 gap-4 mb-6">
+                {DIVS.map(div=>{const da=mixAnalysis.find(x=>x.div===div)||{tProj:0,tAssets:0};return(<Card key={div}><div className="flex items-center gap-2 mb-2"><div className="w-2.5 h-2.5 rounded-full" style={{background:DC[div]}}/><span className="text-sm font-semibold text-gray-900">{div}</span></div><p className="text-3xl font-bold text-gray-900">{da.tProj}</p><p className="text-sm text-gray-400 mt-1">projects · <span className="font-medium text-gray-600">{da.tAssets.toLocaleString()} total assets</span></p></Card>);})}
               </div>
+              <Card padding="p-0">
+                <div className="px-6 pt-5 pb-4 border-b border-gray-50">
+                  <p className="text-sm font-semibold text-gray-900">How to use this table</p>
+                  <p className="text-xs text-gray-400 mt-1">Use + / − to adjust project counts. Type directly into the assets/brief field to set average volume per brief. ⚡ green rows are automation-eligible — their output uses the QC rate rather than the manual production rate.</p>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead><tr className="bg-gray-50 text-gray-400 font-medium uppercase tracking-wide text-xs"><th className="px-6 py-3 text-left">Project Type</th><th className="px-3 py-3 text-center">Pipeline</th><th className="px-3 py-3 text-center" style={{color:DC.LDB}}>LDB proj</th><th className="px-3 py-3 text-center" style={{color:DC.LDB}}>LDB assets/brief</th><th className="px-3 py-3 text-center" style={{color:DC.PPD}}>PPD proj</th><th className="px-3 py-3 text-center" style={{color:DC.PPD}}>PPD assets/brief</th><th className="px-3 py-3 text-center" style={{color:DC.LLD}}>LLD proj</th><th className="px-3 py-3 text-center" style={{color:DC.LLD}}>LLD assets/brief</th><th className="px-3 py-3 text-center">Total</th><th className="px-3 py-3 text-center">Assets</th></tr></thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {mix.map(m=>{const pt=PT_BASE.find(p=>p.id===m.id),rowTot=m.LDB+m.PPD+m.LLD,rowAssets=(m.assetsLDB*m.LDB)+(m.assetsPPD*m.PPD)+(m.assetsLLD*m.LLD);return(
+                        <tr key={m.id} className={`hover:bg-gray-50 transition-colors ${m.autoEligible?"bg-green-50/30":""}`}>
+                          <td className="px-6 py-3"><div className="flex items-center gap-2.5"><div className="w-2 h-2 rounded-full flex-shrink-0" style={{background:pt?.color||"#666"}}/><span className="font-medium text-gray-800">{pt?.label||m.id}</span></div></td>
+                          <td className="px-3 py-3 text-center"><span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${m.autoEligible?"bg-green-100 text-green-700":"bg-gray-100 text-gray-500"}`}>{m.autoEligible?"⚡ Auto":"Manual"}</span></td>
+                          <td className="px-3 py-3 text-center"><div className="flex items-center justify-center gap-1"><button onClick={()=>updateMixCount(m.id,"LDB",m.LDB-1)} className="w-5 h-5 rounded-lg bg-gray-100 text-gray-600 font-bold hover:bg-gray-200">−</button><span className="w-6 text-center font-bold" style={{color:DC.LDB}}>{m.LDB}</span><button onClick={()=>updateMixCount(m.id,"LDB",m.LDB+1)} className="w-5 h-5 rounded-lg bg-gray-100 text-gray-600 font-bold hover:bg-gray-200">+</button></div></td>
+                          <td className="px-3 py-3 text-center"><input type="number" min="1" value={m.assetsLDB} onChange={e=>updateMixAssets(m.id,"assetsLDB",+e.target.value)} className="w-16 text-center text-xs font-semibold border rounded-lg px-1 py-1.5 focus:outline-none" style={{borderColor:DC.LDB+"40",color:DC.LDB}}/><p className="text-xs text-gray-400 mt-0.5">{(m.assetsLDB*m.LDB).toLocaleString()}</p></td>
+                          <td className="px-3 py-3 text-center"><div className="flex items-center justify-center gap-1"><button onClick={()=>updateMixCount(m.id,"PPD",m.PPD-1)} className="w-5 h-5 rounded-lg bg-gray-100 text-gray-600 font-bold hover:bg-gray-200">−</button><span className="w-6 text-center font-bold" style={{color:DC.PPD}}>{m.PPD}</span><button onClick={()=>updateMixCount(m.id,"PPD",m.PPD+1)} className="w-5 h-5 rounded-lg bg-gray-100 text-gray-600 font-bold hover:bg-gray-200">+</button></div></td>
+                          <td className="px-3 py-3 text-center"><input type="number" min="1" value={m.assetsPPD} onChange={e=>updateMixAssets(m.id,"assetsPPD",+e.target.value)} className="w-16 text-center text-xs font-semibold border rounded-lg px-1 py-1.5 focus:outline-none" style={{borderColor:DC.PPD+"40",color:DC.PPD}}/><p className="text-xs text-gray-400 mt-0.5">{(m.assetsPPD*m.PPD).toLocaleString()}</p></td>
+                          <td className="px-3 py-3 text-center"><div className="flex items-center justify-center gap-1"><button onClick={()=>updateMixCount(m.id,"LLD",m.LLD-1)} className="w-5 h-5 rounded-lg bg-gray-100 text-gray-600 font-bold hover:bg-gray-200">−</button><span className="w-6 text-center font-bold" style={{color:DC.LLD}}>{m.LLD}</span><button onClick={()=>updateMixCount(m.id,"LLD",m.LLD+1)} className="w-5 h-5 rounded-lg bg-gray-100 text-gray-600 font-bold hover:bg-gray-200">+</button></div></td>
+                          <td className="px-3 py-3 text-center"><input type="number" min="1" value={m.assetsLLD} onChange={e=>updateMixAssets(m.id,"assetsLLD",+e.target.value)} className="w-16 text-center text-xs font-semibold border rounded-lg px-1 py-1.5 focus:outline-none" style={{borderColor:DC.LLD+"40",color:DC.LLD}}/><p className="text-xs text-gray-400 mt-0.5">{(m.assetsLLD*m.LLD).toLocaleString()}</p></td>
+                          <td className="px-3 py-3 text-center font-bold text-gray-900">{rowTot}</td>
+                          <td className="px-6 py-3 text-center font-semibold text-gray-600">{rowAssets.toLocaleString()}</td>
+                        </tr>
+                      );})}
+                      <tr className="border-t-2 border-gray-200 bg-gray-50 font-semibold text-xs">
+                        <td colSpan={2} className="px-6 py-3 text-gray-700">TOTAL</td>
+                        <td className="px-3 py-3 text-center font-bold" style={{color:DC.LDB}}>{mix.reduce((s,m)=>s+m.LDB,0)}</td><td className="px-3 py-3 text-center text-gray-400">—</td>
+                        <td className="px-3 py-3 text-center font-bold" style={{color:DC.PPD}}>{mix.reduce((s,m)=>s+m.PPD,0)}</td><td className="px-3 py-3 text-center text-gray-400">—</td>
+                        <td className="px-3 py-3 text-center font-bold" style={{color:DC.LLD}}>{mix.reduce((s,m)=>s+m.LLD,0)}</td><td className="px-3 py-3 text-center text-gray-400">—</td>
+                        <td className="px-3 py-3 text-center text-gray-900">{combined.tProj}</td>
+                        <td className="px-6 py-3 text-center text-gray-700">{combined.tAssets.toLocaleString()}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
             </div>
           </div>
         )}
 
         {/* ══ SLA CALC ══ */}
-        {activeTab==="🔢 SLA Calc"&&(
-          <div className="space-y-4">
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-              <h2 className="text-sm font-bold text-gray-800 mb-4">Single Project SLA Estimator</h2>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                <div className="bg-purple-50 border border-purple-200 rounded-xl p-3"><label className="text-xs font-bold text-purple-700 block mb-2">Complexity</label><div className="flex gap-1 flex-wrap">{["Simple","Complex","Creation","Bespoke"].map(c=>(<button key={c} onClick={()=>setCalcCplx(c)} className={`px-2 py-0.5 text-xs rounded font-semibold ${calcCplx===c?"bg-purple-600 text-white":"bg-white text-purple-600 border border-purple-200"}`}>{c}</button>))}</div></div>
-                <div><label className="text-xs font-bold text-gray-700 block mb-2">Asset Volume</label><div className="flex gap-1 flex-wrap">{ASSET_BANDS.map(b=>(<button key={b} onClick={()=>setCalcAssetBand(b)} className={`px-2 py-0.5 text-xs rounded font-semibold ${calcAssetBand===b?"bg-indigo-600 text-white":"bg-gray-100 text-gray-600"}`}>{b}</button>))}</div></div>
-                <div><label className="text-xs font-bold text-gray-700 block mb-2">Client Feedback</label><div className="flex gap-1">{[{l:"Realistic",v:true},{l:"Best Case",v:false}].map(o=>(<button key={o.l} onClick={()=>setClientDays(o.v)} className={`px-2 py-1 text-xs rounded font-semibold ${clientDays===o.v?"bg-amber-500 text-white":"bg-gray-100 text-gray-600"}`}>{o.l}</button>))}</div></div>
-                <div><label className="text-xs font-bold text-gray-700 block mb-2">EAN Band</label><div className="flex gap-1">{["1-5 EANs","5-10 EANs","10-15 EANs"].map(b=>(<button key={b} onClick={()=>setEanBand(b)} className={`px-2 py-0.5 text-xs rounded font-semibold ${eanBand===b?"bg-teal-600 text-white":"bg-gray-100 text-gray-600"}`}>{b.replace(" EANs","")}</button>))}</div></div>
+        {activeTab==="sla"&&(
+          <div className="space-y-6">
+            <SectionHeader number="" title="How Long Will This Project Take?" subtitle="Estimate the end-to-end SLA for any single brief by selecting its type, complexity and asset volume." what="Each project type goes through a defined set of stages. This calculator applies the duration for each active stage and sums them into a total SLA in calendar days." insight={{label:"Customise it",text:"The ± controls override any stage duration. Overrides are saved per project type — useful when a client has faster approvals or a brief skips translation."}} color="#8B5CF6"/>
+            <Card>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <div><p className="text-xs font-medium text-gray-500 mb-2">Complexity</p><div className="flex gap-1.5 flex-wrap">{["Simple","Complex","Creation","Bespoke"].map(c=>(<button key={c} onClick={()=>setCalcCplx(c)} className="px-3 py-1.5 rounded-xl text-xs font-semibold transition-all" style={calcCplx===c?{background:"#8B5CF6",color:"white"}:{background:"#F3F4F6",color:"#6B7280"}}>{c}</button>))}</div></div>
+                <div><p className="text-xs font-medium text-gray-500 mb-2">Asset Volume</p><div className="flex gap-1.5 flex-wrap">{ASSET_BANDS.map(b=>(<button key={b} onClick={()=>setCalcAssetBand(b)} className="px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all" style={calcAssetBand===b?{background:"#1D1D1F",color:"white"}:{background:"#F3F4F6",color:"#6B7280"}}>{b}</button>))}</div></div>
+                <div><p className="text-xs font-medium text-gray-500 mb-2">Client Feedback</p><div className="flex gap-1 p-1 bg-gray-100 rounded-xl">{[{l:"Realistic",v:true},{l:"Best Case",v:false}].map(o=>(<button key={String(o.v)} onClick={()=>setClientDays(o.v)} className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all" style={clientDays===o.v?{background:"white",color:"#1D1D1F",boxShadow:"0 1px 3px rgba(0,0,0,0.1)"}:{color:"#6B7280"}}>{o.l}</button>))}</div></div>
+                <div><p className="text-xs font-medium text-gray-500 mb-2">EAN Band</p><div className="flex gap-1.5">{["1-5 EANs","5-10 EANs","10-15 EANs"].map(b=>(<button key={b} onClick={()=>setEanBand(b)} className="px-2 py-1.5 rounded-xl text-xs font-semibold transition-all" style={eanBand===b?{background:"#0F172A",color:"white"}:{background:"#F3F4F6",color:"#6B7280"}}>{b.replace(" EANs","")}</button>))}</div></div>
               </div>
-              <div><label className="text-xs font-bold text-gray-700 block mb-2">Project Type</label><div className="flex gap-2 flex-wrap">{PT.map(pt=>(<button key={pt.id} onClick={()=>setCalcType(pt.id)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${calcType===pt.id?"text-white border-transparent":"bg-gray-50 text-gray-600 border-gray-200"}`} style={calcType===pt.id?{background:pt.color}:{}}>{pt.label}{pt.autoEligible&&" 🤖"}{hasOv(pt.id)&&<span className="ml-1 opacity-70">✎</span>}</button>))}</div></div>
-            </div>
+              <div><p className="text-xs font-medium text-gray-500 mb-2">Project Type</p><div className="flex gap-2 flex-wrap">{PT.map(pt=>(<button key={pt.id} onClick={()=>setCalcType(pt.id)} className="px-3 py-2 rounded-xl text-xs font-semibold border transition-all" style={calcType===pt.id?{background:pt.color,color:"white",borderColor:pt.color}:{background:"white",color:"#6B7280",borderColor:"#E5E7EB"}}>{pt.label}{pt.autoEligible&&" ⚡"}{hasOv(pt.id)&&" ✎"}</button>))}</div></div>
+            </Card>
             {calcPt&&calcSla&&(
-              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-                <div className="flex items-center justify-between mb-4"><div><h2 className="text-base font-black" style={{color:calcPt.color}}>{calcPt.label}</h2><div className="flex items-center gap-2 mt-0.5"><p className="text-xs text-gray-500"><strong>{calcCplx}</strong> · <strong>{calcAssetBand}</strong></p><span className={`text-xs px-2 py-0.5 rounded-full font-bold ${calcPt.autoEligible?"bg-green-100 text-green-700":"bg-gray-100 text-gray-500"}`}>{calcPt.autoEligible?"🤖 Auto eligible":"Manual only"}</span>{hasOv(calcType)&&<span className="bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full text-xs">Custom SLA</span>}</div></div><div className="flex gap-2 items-center">{hasOv(calcType)&&<button onClick={()=>resetOv(calcType)} className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-orange-50 text-orange-600 border border-orange-200">↩ Reset</button>}<div className="bg-blue-600 text-white rounded-xl px-4 py-2 text-center"><p className="text-xs opacity-80">Total SLA</p><p className="text-2xl font-black">{calcSla.total}</p><p className="text-xs opacity-70">days</p></div></div></div>
-                <div className="space-y-2">{STAGE_META.map(sm=>{const active=stageActive(calcPt,sm.key),defVal=calcSla.defaults[sm.key]??0,curVal=calcSla.breakdown[sm.key]??0,isOv=slaOv[calcType]?.[sm.key]!==undefined;return(<div key={sm.key} className={`rounded-xl border p-3 ${active?"border-blue-200 bg-blue-50":"border-gray-100 bg-gray-50 opacity-50"}`}><div className="flex items-center gap-3"><div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${active?"bg-blue-500 text-white":"bg-gray-200 text-gray-400"}`}>{active?"✓":"–"}</div><div className="flex-1 min-w-0"><div className="flex items-center gap-2 flex-wrap"><span className={`text-sm font-bold ${active?"text-blue-900":"text-gray-400"}`}>{sm.label}</span>{isOv&&<span className="text-xs bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full">custom</span>}</div><p className="text-xs text-gray-500 mt-0.5">{sm.desc}</p></div>{active?(<div className="flex items-center gap-2 flex-shrink-0">{isOv&&<span className="text-xs text-gray-400 line-through">{defVal}d</span>}<div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg px-2 py-1"><button onClick={()=>setOv(calcType,sm.key,curVal-1)} className="w-6 h-6 rounded bg-gray-100 text-sm font-bold flex items-center justify-center">−</button><input type="number" min="0" value={curVal} onChange={e=>setOv(calcType,sm.key,e.target.value)} className={`w-12 text-center font-black text-lg border-none outline-none bg-transparent ${isOv?"text-orange-600":"text-blue-700"}`}/><button onClick={()=>setOv(calcType,sm.key,curVal+1)} className="w-6 h-6 rounded bg-gray-100 text-sm font-bold flex items-center justify-center">+</button></div><span className="text-xs text-gray-400">days</span>{isOv&&<button onClick={()=>setOv(calcType,sm.key,defVal)} className="text-xs text-orange-500">↩</button>}</div>):(<span className="text-xs text-gray-300 bg-gray-100 rounded-lg px-3 py-1.5 flex-shrink-0">Not Required</span>)}</div></div>);})}</div>
-                <div className="mt-4 grid grid-cols-3 gap-3"><div className="bg-blue-600 rounded-xl p-3 text-white text-center"><p className="text-xs opacity-80">Total SLA</p><p className="text-2xl font-black">{calcSla.total}d</p></div><div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-center"><p className="text-xs text-blue-500">PM Days</p><p className="text-2xl font-black text-blue-700">{calcSla.pmDays}</p></div><div className="bg-purple-50 border border-purple-200 rounded-xl p-3 text-center"><p className="text-xs text-purple-500">Designer Days</p><p className="text-2xl font-black text-purple-700">{calcSla.desDays}</p></div></div>
+              <div className="grid grid-cols-3 gap-6">
+                <div className="col-span-2">
+                  <Card padding="p-0">
+                    <div className="px-6 pt-5 pb-4 border-b border-gray-50 flex items-start justify-between">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1"><div className="w-3 h-3 rounded-full" style={{background:calcPt.color}}/><h2 className="text-base font-semibold text-gray-900">{calcPt.label}</h2></div>
+                        <div className="flex items-center gap-2 flex-wrap"><Badge color="gray" size="xs">{calcCplx}</Badge><Badge color="gray" size="xs">{calcAssetBand} assets</Badge><Badge color="gray" size="xs">{clientDays?"Realistic":"Best case"}</Badge>{calcPt.autoEligible&&<Badge color="green" size="xs">⚡ Auto eligible</Badge>}{hasOv(calcType)&&<Badge color="amber" size="xs">✎ Custom durations</Badge>}</div>
+                        <p className="text-xs text-gray-400 mt-2">Stages marked ✓ are active. Use ± to override any stage duration for this brief type.</p>
+                      </div>
+                      {hasOv(calcType)&&<button onClick={()=>resetOv(calcType)} className="text-xs font-medium text-amber-600 hover:text-amber-700 flex-shrink-0 ml-4">↩ Reset</button>}
+                    </div>
+                    <div className="p-4 space-y-2">
+                      {STAGE_META.map(sm=>{const active=stageActive(calcPt,sm.key),defVal=calcSla.defaults[sm.key]??0,curVal=calcSla.breakdown[sm.key]??0,isOv=slaOv[calcType]?.[sm.key]!==undefined;return(
+                        <div key={sm.key} className={`flex items-center gap-4 p-3 rounded-xl ${active?"bg-gray-50":"opacity-30"}`}>
+                          <div className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${active?"bg-gray-900 text-white":"bg-gray-200 text-gray-400"}`}>{active?"✓":"–"}</div>
+                          <div className="flex-1 min-w-0"><p className={`text-sm font-medium ${active?"text-gray-900":"text-gray-400"}`}>{sm.label}</p><p className="text-xs text-gray-400 mt-0.5">{sm.desc}</p></div>
+                          {active?(
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              {isOv&&<span className="text-xs text-gray-300 line-through">{defVal}d</span>}
+                              <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-xl px-2 py-1 shadow-sm">
+                                <button onClick={()=>setOv(calcType,sm.key,curVal-1)} className="w-5 h-5 rounded-lg bg-gray-100 font-bold flex items-center justify-center hover:bg-gray-200">−</button>
+                                <input type="number" min="0" value={curVal} onChange={e=>setOv(calcType,sm.key,e.target.value)} className={`w-10 text-center font-bold text-sm border-none outline-none bg-transparent ${isOv?"text-amber-600":"text-gray-900"}`}/>
+                                <button onClick={()=>setOv(calcType,sm.key,curVal+1)} className="w-5 h-5 rounded-lg bg-gray-100 font-bold flex items-center justify-center hover:bg-gray-200">+</button>
+                              </div>
+                              <span className="text-xs text-gray-400">days</span>
+                              {isOv&&<button onClick={()=>setOv(calcType,sm.key,defVal)} className="text-xs text-amber-500">↩</button>}
+                            </div>
+                          ):(
+                            <span className="text-xs text-gray-300 bg-gray-50 rounded-lg px-3 py-1.5 flex-shrink-0">Not required</span>
+                          )}
+                        </div>
+                      );})}
+                    </div>
+                  </Card>
+                </div>
+                <div className="space-y-4">
+                  <div className="p-6 rounded-2xl text-center text-white" style={{background:"#1D1D1F"}}><p className="text-xs font-medium opacity-60 uppercase tracking-wide mb-2">Total SLA</p><p className="text-5xl font-bold">{calcSla.total}</p><p className="text-sm opacity-60 mt-1">calendar days</p></div>
+                  <Card><p className="text-xs font-medium text-gray-500 mb-3">Resource effort estimate</p><div className="space-y-3"><div><div className="flex justify-between text-sm mb-1.5"><span className="text-gray-600">PM days</span><span className="font-bold text-gray-900">{calcSla.pmDays}d</span></div><div className="w-full h-1.5 bg-gray-100 rounded-full"><div className="h-1.5 rounded-full bg-blue-500" style={{width:`${Math.min(calcSla.pmDays/calcSla.total*100,100)}%`}}/></div></div><div><div className="flex justify-between text-sm mb-1.5"><span className="text-gray-600">Designer days</span><span className="font-bold text-gray-900">{calcSla.desDays}d</span></div><div className="w-full h-1.5 bg-gray-100 rounded-full"><div className="h-1.5 rounded-full bg-purple-500" style={{width:`${Math.min(calcSla.desDays/calcSla.total*100,100)}%`}}/></div></div></div></Card>
+                  <Insight type="info">Use ± to adjust for specific client circumstances — faster approvals, no translation, or a brief that skips certain stages.</Insight>
+                </div>
               </div>
             )}
           </div>
         )}
 
-        {/* ══ TEAM MANAGER ══ */}
-        {activeTab==="👥 Team Manager"&&(
-          <div className="space-y-4">
-            {!hasSupabase&&<div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700 font-semibold">⚠️ Offline mode — add Supabase credentials to persist changes.</div>}
-            {pendingStarters.length>0&&(<div className="bg-amber-50 border border-amber-200 rounded-2xl p-4"><h3 className="text-sm font-bold text-amber-700 mb-2">⏳ Pending Starters — {pendingStarters.length}</h3><table className="w-full text-xs"><thead><tr className="text-amber-600 uppercase"><th className="px-3 py-1 text-left">Name</th><th className="px-3 py-1 text-left">Role</th><th className="px-3 py-1 text-center">Div</th><th className="px-3 py-1 text-center">Start</th><th className="px-3 py-1 text-center">Cap %</th></tr></thead><tbody>{pendingStarters.map(p=>{const f=availFrac(p.startDate,p.endDate,WD);return(<tr key={p.id} className="border-t border-amber-100"><td className="px-3 py-1.5 font-semibold">{p.name}</td><td className="px-3 py-1.5 text-gray-600">{p.role}</td><td className="px-3 py-1.5 text-center"><span className="font-bold text-xs px-2 py-0.5 rounded-full" style={{background:DIV_COLORS[p.division]+"22",color:DIV_COLORS[p.division]}}>{p.division}</span></td><td className="px-3 py-1.5 text-center font-bold text-amber-700">{startLbl(p.startDate)}</td><td className="px-3 py-1.5 text-center font-bold text-green-600">{Math.round(f*100)}%</td></tr>);})}</tbody></table></div>)}
-            {pendingLeavers.length>0&&(<div className="bg-red-50 border border-red-200 rounded-2xl p-4"><h3 className="text-sm font-bold text-red-700 mb-2">🔴 Planned Leavers — {pendingLeavers.length}</h3><table className="w-full text-xs"><thead><tr className="text-red-600 uppercase"><th className="px-3 py-1 text-left">Name</th><th className="px-3 py-1 text-left">Role</th><th className="px-3 py-1 text-center">Div</th><th className="px-3 py-1 text-center">Exit</th><th className="px-3 py-1 text-center">Remaining %</th></tr></thead><tbody>{pendingLeavers.map(p=>{const f=availFrac(p.startDate,p.endDate,WD);return(<tr key={p.id} className="border-t border-red-100"><td className="px-3 py-1.5 font-semibold">{p.name}</td><td className="px-3 py-1.5 text-gray-600">{p.role}</td><td className="px-3 py-1.5 text-center"><span className="font-bold text-xs px-2 py-0.5 rounded-full" style={{background:DIV_COLORS[p.division]+"22",color:DIV_COLORS[p.division]}}>{p.division}</span></td><td className="px-3 py-1.5 text-center font-bold text-red-700">{endLbl(p.endDate)}</td><td className="px-3 py-1.5 text-center font-bold text-amber-600">{Math.round(f*100)}%</td></tr>);})}</tbody></table></div>)}
-            <div className="grid grid-cols-4 gap-3">
-              <div className="bg-gray-900 text-white rounded-xl p-3 text-center"><p className="text-xs opacity-70 uppercase">Active</p><p className="text-3xl font-black">{capacityRoster.length}</p><p className="text-xs opacity-50">{roster.filter(p=>p.removed).length} removed · {pendingStarters.length} joining · {pendingLeavers.length} leaving</p></div>
-              {DIVS.map(div=>{const hc=poolsByDiv[div];return(<div key={div} className="rounded-xl border border-gray-200 bg-white p-3"><p className="text-xs font-black uppercase mb-2" style={{color:DIV_COLORS[div]}}>{div}</p><div className="grid grid-cols-2 gap-1 text-center"><div className="bg-blue-50 rounded-lg p-1.5"><p className="text-xs text-blue-500">PMs</p><p className="font-black text-blue-700 text-lg">{hc.pm.total}</p><p className="text-xs text-blue-400">{hc.pm.fte}F·{hc.pm.fl}FL</p></div><div className="bg-purple-50 rounded-lg p-1.5"><p className="text-xs text-purple-500">Designers</p><p className="font-black text-purple-700 text-lg">{hc.des.total}</p><p className="text-xs text-purple-400">{hc.des.fte}F·{hc.des.fl}FL</p></div></div></div>);})}
+        {/* ══ TEAM ══ */}
+        {activeTab==="team"&&(
+          <div className="space-y-6">
+            <SectionHeader number="" title="Live Team Roster" subtitle="The single source of truth for who is on the team, what division they're in, and when they're available."
+              what="Every PM and Integrated Designer listed here contributes to the capacity calculations across the tool. Set start dates for new joiners and exit dates for leavers — capacity is automatically pro-rated."
+              insight={{label:"Keep this current",text:"All capacity numbers in Capacity and Forecast derive from this roster. Out-of-date headcount = inaccurate model = unreliable governance conversations."}}
+              color="#1D1D1F"/>
+            {pendingStarters.length>0&&(<div className="p-5 rounded-2xl border border-amber-200 bg-amber-50"><p className="text-sm font-semibold text-amber-800 mb-1">⏳ {pendingStarters.length} Pending Starter{pendingStarters.length>1?"s":""}</p><p className="text-xs text-amber-600 mb-3">Not yet active — capacity is pro-rated from their start date.</p><div className="space-y-2">{pendingStarters.map(p=>{const f=availFrac(p.startDate,p.endDate,WD);return(<div key={p.id} className="flex items-center gap-3 text-sm"><span className="font-medium text-amber-900">{p.name}</span><Badge color="gray" size="xs">{p.division} · {p.role}</Badge><span className="text-amber-600 text-xs">Starts {startLbl(p.startDate)}</span><span className="ml-auto text-xs font-semibold text-green-600">{Math.round(f*100)}% this period</span></div>);})}</div></div>)}
+            {pendingLeavers.length>0&&(<div className="p-5 rounded-2xl border border-red-200 bg-red-50"><p className="text-sm font-semibold text-red-800 mb-1">🔴 {pendingLeavers.length} Planned Leaver{pendingLeavers.length>1?"s":""}</p><p className="text-xs text-red-600 mb-3">Exit dates set — the capacity model already accounts for this reduction.</p><div className="space-y-2">{pendingLeavers.map(p=>{const f=availFrac(p.startDate,p.endDate,WD);return(<div key={p.id} className="flex items-center gap-3 text-sm"><span className="font-medium text-red-900">{p.name}</span><Badge color="gray" size="xs">{p.division} · {p.role}</Badge><span className="text-red-600 text-xs">Exits {endLbl(p.endDate)}</span><span className="ml-auto text-xs font-semibold text-amber-600">{Math.round(f*100)}% remaining</span></div>);})}</div></div>)}
+            <div className="grid grid-cols-4 gap-4">
+              <Card><p className="text-xs font-medium text-gray-400 mb-2">Total Active</p><p className="text-3xl font-bold text-gray-900">{capacityRoster.length}</p><p className="text-xs text-gray-400 mt-1">{ftePM+fteDes} FTE · {flPM+flDes} Freelance</p></Card>
+              {DIVS.map(div=>{const hc=poolsByDiv[div];return(<Card key={div}><div className="flex items-center gap-1.5 mb-3"><div className="w-2 h-2 rounded-full" style={{background:DC[div]}}/><span className="text-xs font-semibold text-gray-700">{div}</span></div><div className="grid grid-cols-2 gap-2"><div><p className="text-xs text-gray-400">PMs</p><p className="text-xl font-bold text-gray-900">{hc.pm.total}</p><p className="text-xs text-gray-400">{hc.pm.fte}F · {hc.pm.fl}FL</p></div><div><p className="text-xs text-gray-400">Designers</p><p className="text-xl font-bold text-gray-900">{hc.des.total}</p><p className="text-xs text-gray-400">{hc.des.fte}F · {hc.des.fl}FL</p></div></div></Card>);})}
             </div>
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4">
-              <div className="flex flex-wrap gap-3 items-center justify-between mb-3">
-                <div className="flex flex-wrap gap-2 items-center">
-                  <input value={tmSearch} onChange={e=>setTmSearch(e.target.value)} placeholder="Search name…" className="border border-gray-200 rounded-lg px-3 py-1.5 text-xs w-40 focus:outline-none focus:ring-1 focus:ring-blue-400"/>
-                  {[{val:tmDiv,set:setTmDiv,opts:["All","LDB","PPD","LLD"]},{val:tmType,set:setTmType,opts:["All","FTE","Freelance"]},{val:tmRole,set:setTmRole,opts:["All","Project Manager","Integrated Designer"]}].map((s,i)=>(<select key={i} value={s.val} onChange={e=>s.set(e.target.value)} className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none">{s.opts.map(o=><option key={o}>{o}</option>)}</select>))}
-                  <span className="text-xs text-gray-400">{tmFiltered.length} shown</span>
+            {showAdd&&(
+              <Card>
+                <div className="flex items-center justify-between mb-2"><h2 className="text-base font-semibold text-gray-900">Add New Team Member</h2><button onClick={()=>setShowAdd(false)} className="text-gray-400 hover:text-gray-600 text-xl">×</button></div>
+                <p className="text-xs text-gray-400 mb-5">Set start date for anyone not yet active. Set exit date if known — capacity is pro-rated automatically.</p>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
+                  <div className="md:col-span-3"><label className="text-xs font-medium text-gray-500 block mb-1.5">Full Name</label><input value={newP.name} onChange={e=>setNewP(p=>({...p,name:e.target.value}))} placeholder="e.g. Jane Smith" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"/></div>
+                  {[{label:"Role",val:newP.role,set:v=>setNewP(p=>({...p,role:v})),opts:ROLE_OPTIONS},{label:"Function",val:newP.family,set:v=>setNewP(p=>({...p,family:v})),opts:FAMILY_OPTIONS},{label:"Contract",val:newP.type,set:v=>setNewP(p=>({...p,type:v})),opts:["FTE","Freelance"]},{label:"Division",val:newP.division,set:v=>setNewP(p=>({...p,division:v})),opts:["LDB","PPD","LLD","ALL"]},{label:"Status",val:newP.status,set:v=>setNewP(p=>({...p,status:v})),opts:STATUS_OPTIONS}].map(f=>(<div key={f.label}><label className="text-xs font-medium text-gray-500 block mb-1.5">{f.label}</label><select value={f.val} onChange={e=>f.set(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-gray-300">{f.opts.map(o=><option key={o}>{o}</option>)}</select></div>))}
+                  <div><label className="text-xs font-medium text-gray-500 block mb-1.5">Start Date</label><select value={newP.startDate} onChange={e=>setNewP(p=>({...p,startDate:e.target.value}))} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none">{WEEK_OPTIONS.map(w=>(<option key={w.value} value={w.value}>{w.label}</option>))}</select></div>
+                  <div><label className="text-xs font-medium text-gray-500 block mb-1.5">Exit Date (if known)</label><select value={newP.endDate} onChange={e=>setNewP(p=>({...p,endDate:e.target.value}))} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none"><option value="never">No planned exit</option>{WEEK_OPTIONS.filter(w=>w.value!=="now").map(w=>(<option key={w.value} value={w.value}>{w.label}</option>))}</select></div>
                 </div>
-                <button onClick={()=>setShowAdd(true)} className="px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700">+ Add Person</button>
+                <div className="flex gap-2"><button onClick={addPerson} className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white" style={{background:"#1D1D1F"}}>Add to Roster</button><button onClick={()=>setShowAdd(false)} className="px-5 py-2.5 rounded-xl text-sm font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200">Cancel</button></div>
+              </Card>
+            )}
+            <div className="flex flex-wrap gap-2 items-center justify-between">
+              <div className="flex flex-wrap gap-2 items-center">
+                <input value={tmSearch} onChange={e=>setTmSearch(e.target.value)} placeholder="Search by name…" className="border border-gray-200 rounded-xl px-3 py-2 text-sm w-48 focus:outline-none focus:ring-2 focus:ring-gray-300"/>
+                {[{val:tmDiv,set:setTmDiv,opts:["All","LDB","PPD","LLD"]},{val:tmType,set:setTmType,opts:["All","FTE","Freelance"]},{val:tmRole,set:setTmRole,opts:["All","Project Manager","Integrated Designer"]}].map((s,i)=>(<select key={i} value={s.val} onChange={e=>s.set(e.target.value)} className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none">{s.opts.map(o=><option key={o}>{o}</option>)}</select>))}
+                <span className="text-xs text-gray-400">{tmFiltered.length} shown</span>
               </div>
-              {showAdd&&(
-                <div className="mb-4 bg-blue-50 border border-blue-200 rounded-xl p-4">
-                  <h3 className="text-sm font-bold text-blue-800 mb-3">➕ Add New Team Member</h3>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3">
-                    <div><label className="text-xs font-semibold text-gray-700 block mb-1">Full Name *</label><input value={newP.name} onChange={e=>setNewP(p=>({...p,name:e.target.value}))} placeholder="e.g. Jane Smith" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"/></div>
-                    {[{label:"Role",val:newP.role,set:v=>setNewP(p=>({...p,role:v})),opts:ROLE_OPTIONS},{label:"Function",val:newP.family,set:v=>setNewP(p=>({...p,family:v})),opts:FAMILY_OPTIONS},{label:"Contract",val:newP.type,set:v=>setNewP(p=>({...p,type:v})),opts:["FTE","Freelance"]},{label:"Division",val:newP.division,set:v=>setNewP(p=>({...p,division:v})),opts:["LDB","PPD","LLD","ALL"]},{label:"Status",val:newP.status,set:v=>setNewP(p=>({...p,status:v})),opts:STATUS_OPTIONS}].map(f=>(<div key={f.label}><label className="text-xs font-semibold text-gray-700 block mb-1">{f.label}</label><select value={f.val} onChange={e=>f.set(e.target.value)} className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none">{f.opts.map(o=><option key={o}>{o}</option>)}</select></div>))}
-                    <div className="bg-blue-100 rounded-xl p-3"><label className="text-xs font-bold text-blue-800 block mb-1">📅 Start Date</label><select value={newP.startDate} onChange={e=>setNewP(p=>({...p,startDate:e.target.value}))} className="w-full border border-blue-300 rounded-lg px-3 py-2 text-xs bg-white focus:outline-none font-semibold">{WEEK_OPTIONS.map(w=>(<option key={w.value} value={w.value}>{w.label}</option>))}</select>{newP.startDate&&newP.startDate!=="now"&&<p className="text-xs text-blue-600 mt-1 font-semibold">→ {Math.round(availFrac(newP.startDate,newP.endDate,WD)*100)}% of {period.label}</p>}</div>
-                    <div className="bg-red-50 border border-red-200 rounded-xl p-3"><label className="text-xs font-bold text-red-700 block mb-1">🔴 Exit Date</label><select value={newP.endDate} onChange={e=>setNewP(p=>({...p,endDate:e.target.value}))} className="w-full border border-red-200 rounded-lg px-3 py-2 text-xs bg-white focus:outline-none font-semibold"><option value="never">No planned exit</option>{WEEK_OPTIONS.filter(w=>w.value!=="now").map(w=>(<option key={w.value} value={w.value}>{w.label}</option>))}</select></div>
-                  </div>
-                  <div className="flex gap-2"><button onClick={addPerson} className="px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-lg">✓ Add to Team</button><button onClick={()=>setShowAdd(false)} className="px-4 py-2 bg-gray-100 text-gray-600 text-xs font-semibold rounded-lg">Cancel</button></div>
-                </div>
-              )}
+              <button onClick={()=>setShowAdd(true)} className="px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{background:"#1D1D1F"}}>+ Add Person</button>
+            </div>
+            <Card padding="p-0">
+              <div className="px-6 py-3 border-b border-gray-50 bg-gray-50">
+                <p className="text-xs text-gray-400"><span className="font-medium text-gray-600">Cap %</span> = proportion of the {period.label} planning period this person contributes capacity for, based on their start and exit dates.</p>
+              </div>
               <div className="overflow-x-auto max-h-96 overflow-y-auto">
-                <table className="w-full text-xs">
-                  <thead className="sticky top-0 z-10"><tr className="bg-gray-50 text-gray-500 uppercase border-b border-gray-200"><th className="px-3 py-2 text-left">Name</th><th className="px-3 py-2 text-left">Role</th><th className="px-3 py-2 text-center">Type</th><th className="px-3 py-2 text-center">Div</th><th className="px-3 py-2 text-center">Start</th><th className="px-3 py-2 text-center">Exit</th><th className="px-3 py-2 text-center">Cap%</th><th className="px-3 py-2 text-center">Status</th><th className="px-3 py-2 text-center">Actions</th></tr></thead>
-                  <tbody>
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 z-10"><tr className="bg-gray-50 text-gray-400 font-medium uppercase tracking-wide text-xs border-b border-gray-100"><th className="px-6 py-3 text-left">Name</th><th className="px-4 py-3 text-left">Role</th><th className="px-4 py-3 text-center">Type</th><th className="px-4 py-3 text-center">Division</th><th className="px-4 py-3 text-center">Starts</th><th className="px-4 py-3 text-center">Exits</th><th className="px-4 py-3 text-center">Cap %</th><th className="px-4 py-3 text-center">Status</th><th className="px-6 py-3 text-center">Actions</th></tr></thead>
+                  <tbody className="divide-y divide-gray-50">
                     {tmFiltered.map(p=>{
-                      const removed=p.removed, isEd=editId===p.id;
-                      const frac=availFrac(p.startDate,p.endDate,WD);
+                      const removed=p.removed,isEd=editId===p.id,frac=availFrac(p.startDate,p.endDate,WD);
                       const isPending=p.startDate&&p.startDate!=="now"&&new Date(p.startDate)>new Date();
                       const isLeaving=p.endDate&&p.endDate!=="never"&&new Date(p.endDate)>new Date();
                       return(
-                        <tr key={p.id} className={`border-t border-gray-100 ${removed?"opacity-40 bg-red-50":isLeaving?"bg-red-50":isPending?"bg-amber-50":isEd?"bg-yellow-50":"hover:bg-gray-50"}`}>
-                          <td className="px-3 py-2">{isEd?<input value={editData.name||""} onChange={e=>setEditData(d=>({...d,name:e.target.value}))} className="border border-blue-300 rounded px-2 py-0.5 text-xs w-full"/>:<span className={`font-semibold ${removed?"line-through text-gray-400":"text-gray-900"}`}>{p.name}</span>}</td>
-                          <td className="px-3 py-2">{isEd?<select value={editData.role||""} onChange={e=>setEditData(d=>({...d,role:e.target.value}))} className="border border-blue-300 rounded px-1 py-0.5 text-xs w-full bg-white">{ROLE_OPTIONS.map(r=><option key={r}>{r}</option>)}</select>:<span className="text-gray-600">{p.role}</span>}</td>
-                          <td className="px-3 py-2 text-center">{isEd?<select value={editData.type||""} onChange={e=>setEditData(d=>({...d,type:e.target.value}))} className="border border-blue-300 rounded px-1 py-0.5 text-xs bg-white"><option>FTE</option><option>Freelance</option></select>:<span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${p.type==="FTE"?"bg-blue-100 text-blue-700":"bg-indigo-100 text-indigo-700"}`}>{p.type}</span>}</td>
-                          <td className="px-3 py-2 text-center">{isEd?<select value={editData.division||""} onChange={e=>setEditData(d=>({...d,division:e.target.value}))} className="border border-blue-300 rounded px-1 py-0.5 text-xs bg-white">{["LDB","PPD","LLD","ALL"].map(d=><option key={d}>{d}</option>)}</select>:<span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{background:(DIV_COLORS[p.division]||"#6b7280")+"22",color:DIV_COLORS[p.division]||"#6b7280"}}>{p.division}</span>}</td>
-                          <td className="px-3 py-2 text-center">{isEd?<select value={editData.startDate||"now"} onChange={e=>setEditData(d=>({...d,startDate:e.target.value}))} className="border border-blue-300 rounded px-1 py-0.5 text-xs bg-white w-24">{WEEK_OPTIONS.map(w=>(<option key={w.value} value={w.value}>{w.label}</option>))}</select>:<span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${isPending?"bg-amber-100 text-amber-700":"bg-gray-100 text-gray-500"}`}>{isPending?"⏳ ":""}{startLbl(p.startDate)}</span>}</td>
-                          <td className="px-3 py-2 text-center">{isEd?<select value={editData.endDate||"never"} onChange={e=>setEditData(d=>({...d,endDate:e.target.value}))} className="border border-red-300 rounded px-1 py-0.5 text-xs bg-white w-24"><option value="never">No exit</option>{WEEK_OPTIONS.filter(w=>w.value!=="now").map(w=>(<option key={w.value} value={w.value}>{w.label}</option>))}</select>:<span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${isLeaving?"bg-red-100 text-red-700":"bg-gray-100 text-gray-400"}`}>{isLeaving?"🔴 ":""}{endLbl(p.endDate)}</span>}</td>
-                          <td className="px-3 py-2 text-center"><span className={`text-xs font-bold ${frac>=0.9?"text-green-600":frac>=0.5?"text-amber-600":"text-red-500"}`}>{Math.round(frac*100)}%</span></td>
-                          <td className="px-3 py-2 text-center">{isEd?<select value={editData.status||""} onChange={e=>setEditData(d=>({...d,status:e.target.value}))} className="border border-blue-300 rounded px-1 py-0.5 text-xs bg-white">{STATUS_OPTIONS.map(s=><option key={s}>{s}</option>)}</select>:<span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${removed?"bg-red-100 text-red-600":p.status==="To Hire"?"bg-yellow-100 text-yellow-700":"bg-green-100 text-green-700"}`}>{removed?"Removed":p.status}</span>}</td>
-                          <td className="px-3 py-2">
-                            <div className="flex items-center justify-center gap-1">
-                              {!removed&&!isEd&&<><button onClick={()=>startEdit(p)} className="px-2 py-1 text-xs font-semibold rounded bg-blue-50 text-blue-600 border border-blue-200">✎</button><button onClick={()=>removePerson(p.id)} className="px-2 py-1 text-xs font-semibold rounded bg-red-50 text-red-600 border border-red-200">✕</button></>}
-                              {isEd&&<div className="flex gap-1"><button onClick={saveEdit} className="px-2 py-1 text-xs font-semibold rounded bg-green-500 text-white">✓</button><button onClick={()=>setEditId(null)} className="px-2 py-1 text-xs font-semibold rounded bg-gray-100 text-gray-600">✕</button></div>}
-                              {removed&&<button onClick={()=>restorePerson(p.id)} className="px-2 py-1 text-xs font-semibold rounded bg-green-50 text-green-600 border border-green-200">↩</button>}
-                            </div>
-                          </td>
+                        <tr key={p.id} className={`hover:bg-gray-50/50 transition-colors ${removed?"opacity-40 bg-red-50/50":isLeaving?"bg-red-50/30":isPending?"bg-amber-50/40":isEd?"bg-blue-50/30":""}`}>
+                          <td className="px-6 py-3"><span className={`font-medium ${removed?"line-through text-gray-400":"text-gray-900"}`}>{isEd?<input value={editData.name||""} onChange={e=>setEditData(d=>({...d,name:e.target.value}))} className="border border-blue-300 rounded-lg px-2 py-1 text-sm w-full"/>:p.name}</span></td>
+                          <td className="px-4 py-3 text-gray-500 text-xs">{isEd?<select value={editData.role||""} onChange={e=>setEditData(d=>({...d,role:e.target.value}))} className="border border-blue-300 rounded-lg px-1 py-1 text-xs w-full bg-white">{ROLE_OPTIONS.map(r=><option key={r}>{r}</option>)}</select>:p.role}</td>
+                          <td className="px-4 py-3 text-center">{isEd?<select value={editData.type||""} onChange={e=>setEditData(d=>({...d,type:e.target.value}))} className="border border-blue-300 rounded-lg px-1 py-1 text-xs bg-white"><option>FTE</option><option>Freelance</option></select>:<Badge color={p.type==="FTE"?"blue":"purple"} size="xs">{p.type}</Badge>}</td>
+                          <td className="px-4 py-3 text-center">{isEd?<select value={editData.division||""} onChange={e=>setEditData(d=>({...d,division:e.target.value}))} className="border border-blue-300 rounded-lg px-1 py-1 text-xs bg-white">{["LDB","PPD","LLD","ALL"].map(d=><option key={d}>{d}</option>)}</select>:<span className="inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full" style={{background:(DC[p.division]||"#6b7280")+"15",color:DC[p.division]||"#6b7280"}}>{p.division}</span>}</td>
+                          <td className="px-4 py-3 text-center">{isEd?<select value={editData.startDate||"now"} onChange={e=>setEditData(d=>({...d,startDate:e.target.value}))} className="border border-blue-300 rounded-lg px-1 py-1 text-xs bg-white w-28">{WEEK_OPTIONS.map(w=>(<option key={w.value} value={w.value}>{w.label}</option>))}</select>:<span className={`text-xs font-medium px-2 py-1 rounded-lg ${isPending?"bg-amber-100 text-amber-700":"text-gray-400"}`}>{isPending?"⏳ ":""}{startLbl(p.startDate)}</span>}</td>
+                          <td className="px-4 py-3 text-center">{isEd?<select value={editData.endDate||"never"} onChange={e=>setEditData(d=>({...d,endDate:e.target.value}))} className="border border-red-300 rounded-lg px-1 py-1 text-xs bg-white w-28"><option value="never">No exit</option>{WEEK_OPTIONS.filter(w=>w.value!=="now").map(w=>(<option key={w.value} value={w.value}>{w.label}</option>))}</select>:<span className={`text-xs font-medium px-2 py-1 rounded-lg ${isLeaving?"bg-red-100 text-red-700":"text-gray-300"}`}>{isLeaving?"🔴 ":""}{endLbl(p.endDate)}</span>}</td>
+                          <td className="px-4 py-3 text-center"><span className={`text-xs font-bold ${frac>=0.9?"text-green-600":frac>=0.5?"text-amber-600":"text-red-500"}`}>{Math.round(frac*100)}%</span></td>
+                          <td className="px-4 py-3 text-center">{isEd?<select value={editData.status||""} onChange={e=>setEditData(d=>({...d,status:e.target.value}))} className="border border-blue-300 rounded-lg px-1 py-1 text-xs bg-white">{STATUS_OPTIONS.map(s=><option key={s}>{s}</option>)}</select>:<Badge color={removed?"red":p.status==="To Hire"?"amber":"green"} size="xs">{removed?"Removed":p.status}</Badge>}</td>
+                          <td className="px-6 py-3"><div className="flex items-center justify-center gap-1.5">
+                            {!removed&&!isEd&&<><button onClick={()=>startEdit(p)} className="px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200">Edit</button><button onClick={()=>removePerson(p.id)} className="px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-red-50 text-red-600 hover:bg-red-100">Remove</button></>}
+                            {isEd&&<><button onClick={saveEdit} className="px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-green-600 text-white">Save</button><button onClick={()=>setEditId(null)} className="px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-gray-100 text-gray-600">Cancel</button></>}
+                            {removed&&<button onClick={()=>restorePerson(p.id)} className="px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-green-50 text-green-600">Restore</button>}
+                          </div></td>
                         </tr>
                       );
                     })}
                   </tbody>
                 </table>
               </div>
-            </div>
-            {roster.filter(p=>p.removed).length>0&&(<div className="bg-red-50 border border-red-200 rounded-2xl p-4"><h3 className="text-sm font-bold text-red-700 mb-2">Removed ({roster.filter(p=>p.removed).length})</h3><div className="flex flex-wrap gap-2">{roster.filter(p=>p.removed).map(p=>(<div key={p.id} className="flex items-center gap-2 bg-white border border-red-200 rounded-lg px-3 py-1.5"><span className="text-xs font-semibold">{p.name}</span><span className="text-xs text-gray-400">{p.division}</span><button onClick={()=>restorePerson(p.id)} className="text-xs text-green-600 font-bold">↩</button></div>))}</div></div>)}
+            </Card>
+            {roster.filter(p=>p.removed).length>0&&(<Card><p className="text-sm font-semibold text-gray-700 mb-1">Removed from Roster ({roster.filter(p=>p.removed).length})</p><p className="text-xs text-gray-400 mb-3">Removed people no longer contribute to capacity. Restore if they return.</p><div className="flex flex-wrap gap-2">{roster.filter(p=>p.removed).map(p=>(<div key={p.id} className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2"><span className="text-xs font-medium text-gray-600">{p.name}</span><span className="text-xs text-gray-400">{p.division}</span><button onClick={()=>restorePerson(p.id)} className="text-xs text-green-600 font-semibold">↩ Restore</button></div>))}</div></Card>)}
           </div>
         )}
       </div>
 
-      <p className="text-center text-xs text-gray-400 py-4">
-        L'Oréal eComm · {globalHC.des.total} designers · {manualRate}/day
-        · {availableHoursPerPM}h ÷ {hoursPerProject}h/proj = {projectsPerPM} concurrent · PM cap: {totalTeamPMCap.toLocaleString()}/mo
-        · {dbStatus==="connected"?"🟢 Supabase":"⚪ Offline"}
-      </p>
+      <div className="max-w-7xl mx-auto px-6 py-6 flex items-center justify-between border-t border-gray-100">
+        <p className="text-xs text-gray-300">L'Oréal eCommerce Programme · Capacity Planning Tool v18.4</p>
+        <p className="text-xs text-gray-300">{globalHC.des.total} designers · {manualRate}/day manual · {autoQCRate}/day QC · {projectsPerPM} proj/PM · {dbStatus==="connected"?"🟢 Supabase":"⚪ Offline"}</p>
+      </div>
     </div>
   );
 }
