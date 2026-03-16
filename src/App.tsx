@@ -14,31 +14,53 @@ const MONTH_LIST=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","N
 const MONTH_IDX=Object.fromEntries(MONTH_LIST.map((m,i)=>[m,i]));
 const GO_LIVE_OPTIONS=["Off",...MONTH_LIST];
 const HOURS_PER_DAY=8;
+const WORKING_DAYS_PER_MONTH=21;
 
 function isAutoLive(div,month,cfg){const gl=cfg[div]?.goLiveMonth;if(!gl||gl==="Off")return false;return MONTH_IDX[month]>=MONTH_IDX[gl];}
 function qcAssetsPerDay(m){return Math.round((HOURS_PER_DAY*60)/m);}
-function blendedRateFromQC(div,month,cfg,minsPerAsset,manualRate){if(!isAutoLive(div,month,cfg))return manualRate;const sp=cfg[div]?.simplePct??0;return Math.round(sp*qcAssetsPerDay(minsPerAsset)+(1-sp)*manualRate);}
 
 function generateWeeks(){const out=[{label:"Available Now",value:"now"}];const cur=new Date("2026-01-05");const end=new Date("2026-12-28");while(cur<=end){out.push({label:`w/c ${cur.getDate()} ${cur.toLocaleString("en-GB",{month:"short"})} '26`,value:cur.toISOString().split("T")[0]});cur.setDate(cur.getDate()+7);}return out;}
 const WEEK_OPTIONS=generateWeeks();
 
-function availFrac(s,e,wd){let f=1;const t=new Date();if(s&&s!=="now"){const sd=new Date(s);if(sd>t)f=Math.min(f,Math.max(0,(wd-(sd-t)/86400000*(5/7))/wd));}if(e&&e!=="never"){const ed=new Date(e);if(ed>t)f=Math.min(f,Math.max(0,(ed-t)/86400000*(5/7)/wd));}return Math.max(0,Math.min(1,f));}
+// availFrac: returns a 0–1 fraction representing how much of this planning period
+// a person contributes, based on their start and end dates.
+// Used for BOTH designers and PMs so start/end dates affect everyone's capacity.
+function availFrac(s,e,wd){
+  let f=1;
+  const t=new Date();
+  if(s&&s!=="now"){const sd=new Date(s);if(sd>t)f=Math.min(f,Math.max(0,(wd-(sd-t)/86400000*(5/7))/wd));}
+  if(e&&e!=="never"){const ed=new Date(e);if(ed>t)f=Math.min(f,Math.max(0,(ed-t)/86400000*(5/7)/wd));}
+  return Math.max(0,Math.min(1,f));
+}
+
 function startLbl(v){return(!v||v==="now")?"Now":(WEEK_OPTIONS.find(w=>w.value===v)?.label??v);}
 function endLbl(v){return(!v||v==="never")?"—":(WEEK_OPTIONS.find(w=>w.value===v)?.label??v);}
 
+// ── Division weight for a person ─────────────────────────────────────────
+// division="LDB/PPD/LLD" → full weight to that division
+// division="ALL"         → 1/3 weight to each of the three divisions
+// Returns object {LDB, PPD, LLD} summing to 1.0
+function divWeights(division){
+  if(division==="LDB")return{LDB:1,PPD:0,LLD:0};
+  if(division==="PPD")return{LDB:0,PPD:1,LLD:0};
+  if(division==="LLD")return{LDB:0,PPD:0,LLD:1};
+  if(division==="ALL")return{LDB:1/3,PPD:1/3,LLD:1/3};
+  return{LDB:0,PPD:0,LLD:0};
+}
+
 const FM=[
-  {month:"Jan",ldb:3865,ppd:3097,lld:3481,gt:10443,weeksInMonth:4,weeklyForecast:162,monthlyForecast:648,permPMMonthly:620,flyPMMonthly:0,ldbProj:54,ppdProj:50,lldProj:58},
-  {month:"Feb",ldb:1953,ppd:1695,lld:3306,gt:6954,weeksInMonth:4,weeklyForecast:85,monthlyForecast:340,permPMMonthly:570,flyPMMonthly:120,ldbProj:23,ppdProj:20,lldProj:42},
-  {month:"Mar",ldb:2548,ppd:2357,lld:5348,gt:10253,weeksInMonth:5,weeklyForecast:272,monthlyForecast:1360,permPMMonthly:1360,flyPMMonthly:380,ldbProj:67,ppdProj:62,lldProj:143},
-  {month:"Apr",ldb:2855,ppd:2742,lld:11230,gt:16827,weeksInMonth:4,weeklyForecast:391,monthlyForecast:1564,permPMMonthly:1647,flyPMMonthly:380,ldbProj:66,ppdProj:64,lldProj:261},
-  {month:"May",ldb:2688,ppd:2796,lld:11492,gt:16976,weeksInMonth:4,weeklyForecast:395,monthlyForecast:1580,permPMMonthly:1988,flyPMMonthly:0,ldbProj:62,ppdProj:65,lldProj:268},
-  {month:"Jun",ldb:4257,ppd:4267,lld:16748,gt:25272,weeksInMonth:5,weeklyForecast:588,monthlyForecast:2940,permPMMonthly:3038,flyPMMonthly:450,ldbProj:99,ppdProj:99,lldProj:390},
-  {month:"Jul",ldb:4334,ppd:4237,lld:15737,gt:24308,weeksInMonth:4,weeklyForecast:565,monthlyForecast:2260,permPMMonthly:2430,flyPMMonthly:300,ldbProj:101,ppdProj:99,lldProj:365},
-  {month:"Aug",ldb:724,ppd:777,lld:3223,gt:4724,weeksInMonth:4,weeklyForecast:140,monthlyForecast:560,permPMMonthly:2432,flyPMMonthly:0,ldbProj:21,ppdProj:23,lldProj:96},
-  {month:"Sep",ldb:3326,ppd:3234,lld:11774,gt:18334,weeksInMonth:4,weeklyForecast:420,monthlyForecast:1680,permPMMonthly:2432,flyPMMonthly:0,ldbProj:76,ppdProj:74,lldProj:270},
-  {month:"Oct",ldb:4034,ppd:3950,lld:14471,gt:22455,weeksInMonth:4,weeklyForecast:480,monthlyForecast:1920,permPMMonthly:2432,flyPMMonthly:0,ldbProj:86,ppdProj:84,lldProj:310},
-  {month:"Nov",ldb:2993,ppd:2949,lld:10902,gt:16844,weeksInMonth:4,weeklyForecast:380,monthlyForecast:1520,permPMMonthly:2432,flyPMMonthly:0,ldbProj:67,ppdProj:66,lldProj:247},
-  {month:"Dec",ldb:2285,ppd:2251,lld:8336,gt:12872,weeksInMonth:4,weeklyForecast:290,monthlyForecast:1160,permPMMonthly:2432,flyPMMonthly:0,ldbProj:51,ppdProj:50,lldProj:189},
+  {month:"Jan",ldb:3865,ppd:3097,lld:3481,gt:10443,weeksInMonth:4,monthlyForecast:648,permPMMonthly:620,flyPMMonthly:0,ldbProj:54,ppdProj:50,lldProj:58},
+  {month:"Feb",ldb:1953,ppd:1695,lld:3306,gt:6954,weeksInMonth:4,monthlyForecast:340,permPMMonthly:570,flyPMMonthly:120,ldbProj:23,ppdProj:20,lldProj:42},
+  {month:"Mar",ldb:2548,ppd:2357,lld:5348,gt:10253,weeksInMonth:5,monthlyForecast:1360,permPMMonthly:1360,flyPMMonthly:380,ldbProj:67,ppdProj:62,lldProj:143},
+  {month:"Apr",ldb:2855,ppd:2742,lld:11230,gt:16827,weeksInMonth:4,monthlyForecast:1564,permPMMonthly:1647,flyPMMonthly:380,ldbProj:66,ppdProj:64,lldProj:261},
+  {month:"May",ldb:2688,ppd:2796,lld:11492,gt:16976,weeksInMonth:4,monthlyForecast:1580,permPMMonthly:1988,flyPMMonthly:0,ldbProj:62,ppdProj:65,lldProj:268},
+  {month:"Jun",ldb:4257,ppd:4267,lld:16748,gt:25272,weeksInMonth:5,monthlyForecast:2940,permPMMonthly:3038,flyPMMonthly:450,ldbProj:99,ppdProj:99,lldProj:390},
+  {month:"Jul",ldb:4334,ppd:4237,lld:15737,gt:24308,weeksInMonth:4,monthlyForecast:2260,permPMMonthly:2430,flyPMMonthly:300,ldbProj:101,ppdProj:99,lldProj:365},
+  {month:"Aug",ldb:724,ppd:777,lld:3223,gt:4724,weeksInMonth:4,monthlyForecast:560,permPMMonthly:2432,flyPMMonthly:0,ldbProj:21,ppdProj:23,lldProj:96},
+  {month:"Sep",ldb:3326,ppd:3234,lld:11774,gt:18334,weeksInMonth:4,monthlyForecast:1680,permPMMonthly:2432,flyPMMonthly:0,ldbProj:76,ppdProj:74,lldProj:270},
+  {month:"Oct",ldb:4034,ppd:3950,lld:14471,gt:22455,weeksInMonth:4,monthlyForecast:1920,permPMMonthly:2432,flyPMMonthly:0,ldbProj:86,ppdProj:84,lldProj:310},
+  {month:"Nov",ldb:2993,ppd:2949,lld:10902,gt:16844,weeksInMonth:4,monthlyForecast:1520,permPMMonthly:2432,flyPMMonthly:0,ldbProj:67,ppdProj:66,lldProj:247},
+  {month:"Dec",ldb:2285,ppd:2251,lld:8336,gt:12872,weeksInMonth:4,monthlyForecast:1160,permPMMonthly:2432,flyPMMonthly:0,ldbProj:51,ppdProj:50,lldProj:189},
 ];
 
 const PERIODS=[{label:"1 Month",months:1,workingDays:21},{label:"3 Months",months:3,workingDays:63},{label:"6 Months",months:6,workingDays:126},{label:"12 Months",months:12,workingDays:252}];
@@ -177,7 +199,6 @@ const DEFAULT_AUTO={LLD:{simplePct:0.70,goLiveMonth:"Apr"},LDB:{simplePct:0.50,g
 function stageActive(pt,key){return(SK_IDX[key]||[]).some(i=>pt.stages[i]);}
 function getDefaultDays(ptId,cplx,aBand,eanBand,syndCplx,withCF){const pt=PT_BASE.find(p=>p.id===ptId);if(!pt)return{};return{missingDMI:pt.stages[0]?(6+(withCF?5:0)):0,mastering:pt.stages[1]?2:0,globalRollout:pt.stages[2]?2:0,translation:(pt.stages[3]||pt.stages[4])?(3+(withCF?6:0)):0,production:pt.stages[5]?((PROD_DAYS[cplx]?.[aBand]??9)+(withCF?(PROD_REVS[cplx]??2)*4:0)):0,operaUpload:pt.stages[6]?(OPERA_DAYS[aBand]??1):0,syndication:pt.stages[7]?(SYND_DAYS[syndCplx]?.[eanBand]??4):0};}
 function getWeights(ptId){const w={"cp-simple":{pm:0.25,des:0.65},"cp-adaptation":{pm:0.28,des:0.62},"cp-creation":{pm:0.25,des:0.65},"retailer":{pm:0.20,des:0.15},"gp-eventing":{pm:0.35,des:0.45},"gp-pdp":{pm:0.35,des:0.45},"lp-eventing":{pm:0.28,des:0.52},"lp-pdp":{pm:0.28,des:0.52},"urgent":{pm:0.30,des:0.65}};return w[ptId]||{pm:0.28,des:0.62};}
-
 let _nextId=400;
 
 function Card({children,className="",padding="p-6"}){return <div className={`bg-white rounded-2xl border border-gray-100 shadow-sm ${padding} ${className}`}>{children}</div>;}
@@ -186,21 +207,10 @@ function SectionHeader({number,title,subtitle,what,insight,color="#3B82F6"}){ret
 function CardDescriptor({title,description,howToRead,accent="#6B7280"}){return(<div className="mb-5 pb-5 border-b border-gray-50"><p className="text-sm font-semibold text-gray-900">{title}</p><p className="text-xs text-gray-400 mt-1 leading-relaxed">{description}</p>{howToRead&&<p className="text-xs mt-2 font-medium" style={{color:accent}}>How to read: {howToRead}</p>}</div>);}
 function Insight({type="info",children}){const s={info:{bg:"#EFF6FF",border:"#BFDBFE",text:"#1E40AF",icon:"ℹ"},warn:{bg:"#FFFBEB",border:"#FDE68A",text:"#92400E",icon:"⚠"},tip:{bg:"#F0FDF4",border:"#A7F3D0",text:"#065F46",icon:"→"}}[type];return <div className="flex items-start gap-2 rounded-xl px-3 py-2.5 mt-3 text-xs leading-relaxed" style={{background:s.bg,border:`1px solid ${s.border}`,color:s.text}}><span className="flex-shrink-0 font-bold">{s.icon}</span><span>{children}</span></div>;}
 function SettingRow({label,description,value,min,max,step=1,onChange,display,accent="#3B82F6",derived}){return(<div className="flex items-start gap-6 py-5 border-b border-gray-50 last:border-0"><div className="flex-1 min-w-0"><p className="text-sm font-semibold text-gray-900">{label}</p><p className="text-xs text-gray-400 mt-0.5 leading-relaxed">{description}</p>{derived&&<p className="text-xs font-semibold mt-1.5" style={{color:accent}}>→ {derived}</p>}</div><div className="w-56 flex-shrink-0"><span className="text-xl font-bold block mb-2" style={{color:accent}}>{display||value}</span><input type="range" min={min} max={max} step={step} value={value} onChange={e=>onChange(+e.target.value)} className="w-full h-2 rounded-full cursor-pointer" style={{accentColor:accent}}/><div className="flex justify-between text-xs text-gray-300 mt-1"><span>{min}</span><span>{max}</span></div></div></div>);}
-
 function QuickSlider({label,value,min,max,step=1,onChange,display,accent="#3B82F6",hint}){
   const[open,setOpen]=useState(false);
   const handleChange=useCallback(e=>{e.stopPropagation();onChange(+e.target.value);},[onChange]);
-  return(
-    <div className="relative">
-      <button onClick={()=>setOpen(o=>!o)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all hover:bg-white hover:shadow-sm border border-transparent hover:border-gray-200" style={open?{background:"white",boxShadow:"0 1px 4px rgba(0,0,0,0.08)",borderColor:"#E5E7EB"}:{}}>
-        <span className="text-gray-400">{label}</span>
-        <span className="font-bold" style={{color:accent}}>{display||value}</span>
-        <svg width="8" height="5" viewBox="0 0 8 5" fill="none" className={`transition-transform ${open?"rotate-180":""}`}><path d="M1 1l3 3 3-3" stroke="#9CA3AF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-      </button>
-      {open&&(<><div className="fixed inset-0 z-40" onClick={()=>setOpen(false)}/><div className="absolute top-full left-0 mt-2 z-50 bg-white rounded-2xl shadow-xl border border-gray-100 p-4 w-64" onMouseDown={e=>e.stopPropagation()}><div className="flex justify-between items-baseline mb-3"><p className="text-xs font-semibold text-gray-700">{label}</p><span className="text-lg font-bold" style={{color:accent}}>{display||value}</span></div><input type="range" min={min} max={max} step={step} value={value} onChange={handleChange} className="w-full h-1.5 rounded-full cursor-pointer" style={{accentColor:accent}}/><div className="flex justify-between text-xs text-gray-400 mt-1"><span>{min}</span><span>{max}</span></div>{hint&&<p className="text-xs text-gray-400 mt-2 pt-2 border-t border-gray-100">{hint}</p>}</div></>)}
-    </div>
-  );
-}
+  return(<div className="relative"><button onClick={()=>setOpen(o=>!o)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all hover:bg-white hover:shadow-sm border border-transparent hover:border-gray-200" style={open?{background:"white",boxShadow:"0 1px 4px rgba(0,0,0,0.08)",borderColor:"#E5E7EB"}:{}}><span className="text-gray-400">{label}</span><span className="font-bold" style={{color:accent}}>{display||value}</span><svg width="8" height="5" viewBox="0 0 8 5" fill="none" className={`transition-transform ${open?"rotate-180":""}`}><path d="M1 1l3 3 3-3" stroke="#9CA3AF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></button>{open&&(<><div className="fixed inset-0 z-40" onClick={()=>setOpen(false)}/><div className="absolute top-full left-0 mt-2 z-50 bg-white rounded-2xl shadow-xl border border-gray-100 p-4 w-64" onMouseDown={e=>e.stopPropagation()}><div className="flex justify-between items-baseline mb-3"><p className="text-xs font-semibold text-gray-700">{label}</p><span className="text-lg font-bold" style={{color:accent}}>{display||value}</span></div><input type="range" min={min} max={max} step={step} value={value} onChange={handleChange} className="w-full h-1.5 rounded-full cursor-pointer" style={{accentColor:accent}}/><div className="flex justify-between text-xs text-gray-400 mt-1"><span>{min}</span><span>{max}</span></div>{hint&&<p className="text-xs text-gray-400 mt-2 pt-2 border-t border-gray-100">{hint}</p>}</div></>)}</div>);}
 
 export default function App(){
   const[roster,setRoster]=useState(DEFAULT_ROSTER);
@@ -245,7 +255,6 @@ export default function App(){
   const projectsPerPM=useMemo(()=>Math.max(1,Math.floor(pmHoursPerWeek*(utilPM/100)/hoursPerProject)),[pmHoursPerWeek,hoursPerProject,utilPM]);
   const availHrsPM=+(pmHoursPerWeek*(utilPM/100)).toFixed(1);
   const totalMasterHrs=mastersPerProj*hrsPerMaster;
-
   const updateAuto=(div,field,val)=>setAutoConfig(p=>({...p,[div]:{...p[div],[field]:val}}));
   const PT=useMemo(()=>PT_BASE.map(pt=>({...pt,autoEligible:mix.find(x=>x.id===pt.id)?.autoEligible??false})),[mix]);
   const saveSettings=useCallback(async updates=>{if(!hasSupabase)return;await sbUpsert("settings",Object.entries(updates).map(([key,value])=>({key,value:String(value)})));},[]);
@@ -293,185 +302,203 @@ export default function App(){
   const updateActualFn=(i,field,val)=>setActuals(prev=>prev.map((a,idx)=>idx===i?{...a,[field]:Math.max(0,parseInt(val)||0)}:a));
 
   const capacityRoster=useMemo(()=>roster.filter(p=>!p.removed&&p.status==="Active"),[roster]);
+
+  // ── DESIGNER EFTE BY DIVISION — v18.9 ────────────────────────────────────
+  // Computes effective FTE (availFrac-weighted) per division for each designer.
+  //
+  // division="LDB/PPD/LLD" → 100% of their availFrac to that division
+  // division="ALL"         → 1/3 of their availFrac to EACH of LDB, PPD, LLD
+  //
+  // This means:
+  // - Start/end dates correctly reduce capacity (consistent with PM treatment)
+  // - ALL-division people contribute equally across divisions (no double-counting)
+  // - Sum of all division eftes = sum of all individual availFrac values = total efte
+  //
+  // QA: With default roster (no ALL-division designers, all startDate="now"):
+  //   desEfteByDiv = {LDB: 14.0, PPD: 12.0, LLD: 17.0}, total = 43.0
+  // ─────────────────────────────────────────────────────────────────────────
+  const desEfte=useMemo(()=>{
+    const result={LDB:0,PPD:0,LLD:0};
+    capacityRoster
+      .filter(p=>p.role==="Integrated Designer")
+      .forEach(p=>{
+        const frac=availFrac(p.startDate,p.endDate,WD);
+        const w=divWeights(p.division);
+        result.LDB+=frac*w.LDB;
+        result.PPD+=frac*w.PPD;
+        result.LLD+=frac*w.LLD;
+      });
+    return result;
+  },[capacityRoster,WD]);
+
+  const totalDesEfte=desEfte.LDB+desEfte.PPD+desEfte.LLD;
+
+  // PM efte — availFrac weighted, division-aware (same logic as designers)
+  const pmEfte=useMemo(()=>{
+    const result={LDB:0,PPD:0,LLD:0};
+    capacityRoster
+      .filter(p=>p.role==="Project Manager")
+      .forEach(p=>{
+        const frac=availFrac(p.startDate,p.endDate,WD);
+        const w=divWeights(p.division);
+        result.LDB+=frac*w.LDB;
+        result.PPD+=frac*w.PPD;
+        result.LLD+=frac*w.LLD;
+      });
+    return result;
+  },[capacityRoster,WD]);
+
+  const totalPMEfte=pmEfte.LDB+pmEfte.PPD+pmEfte.LLD;
+
+  // Display counts for Team tab (raw integers, type/division split)
   const poolsByDiv=useMemo(()=>{
     const res={};
     DIVS.forEach(div=>{
-      const sum=arr=>arr.reduce((s,p)=>s+availFrac(p.startDate,p.endDate,WD),0);
       const pmF=capacityRoster.filter(p=>p.role==="Project Manager"&&p.type==="FTE"&&p.division===div);
       const pmFL=capacityRoster.filter(p=>p.role==="Project Manager"&&p.type==="Freelance"&&p.division===div);
       const dF=capacityRoster.filter(p=>p.role==="Integrated Designer"&&p.type==="FTE"&&p.division===div);
       const dFL=capacityRoster.filter(p=>p.role==="Integrated Designer"&&p.type==="Freelance"&&p.division===div);
-      res[div]={pm:{fte:pmF.length,fl:pmFL.length,total:pmF.length+pmFL.length,efte:sum(pmF)+sum(pmFL)},des:{fte:dF.length,fl:dFL.length,total:dF.length+dFL.length,efte:sum(dF)+sum(dFL)}};
+      res[div]={pm:{fte:pmF.length,fl:pmFL.length,total:pmF.length+pmFL.length},des:{fte:dF.length,fl:dFL.length,total:dF.length+dFL.length}};
     });
     res["All"]={
-      pm:{fte:DIVS.reduce((s,d)=>s+res[d].pm.fte,0),fl:DIVS.reduce((s,d)=>s+res[d].pm.fl,0),total:DIVS.reduce((s,d)=>s+res[d].pm.total,0),efte:DIVS.reduce((s,d)=>s+res[d].pm.efte,0)},
-      des:{fte:DIVS.reduce((s,d)=>s+res[d].des.fte,0),fl:DIVS.reduce((s,d)=>s+res[d].des.fl,0),total:DIVS.reduce((s,d)=>s+res[d].des.total,0),efte:DIVS.reduce((s,d)=>s+res[d].des.efte,0)},
+      pm:{fte:DIVS.reduce((s,d)=>s+res[d].pm.fte,0),fl:DIVS.reduce((s,d)=>s+res[d].pm.fl,0),total:DIVS.reduce((s,d)=>s+res[d].pm.total,0)},
+      des:{fte:DIVS.reduce((s,d)=>s+res[d].des.fte,0),fl:DIVS.reduce((s,d)=>s+res[d].des.fl,0),total:DIVS.reduce((s,d)=>s+res[d].des.total,0)},
     };
     return res;
-  },[capacityRoster,WD]);
+  },[capacityRoster]);
 
-  const globalHC=poolsByDiv["All"];
-  const totalPMs=globalHC.pm.efte||0;
-  const fteDes=capacityRoster.filter(p=>p.role==="Integrated Designer"&&p.type==="FTE").length;
-  const flDes=capacityRoster.filter(p=>p.role==="Integrated Designer"&&p.type==="Freelance").length;
   const ftePM=capacityRoster.filter(p=>p.role==="Project Manager"&&p.type==="FTE").length;
   const flPM=capacityRoster.filter(p=>p.role==="Project Manager"&&p.type==="Freelance").length;
-  const manualCap=Math.round((globalHC.des.efte||0)*21*(utilDes/100)*manualRate);
-  const totalTeamPMCap=Math.round(totalPMs*projectsPerPM*(utilPM/100));
-  const desSupplyHrsPerMonth=Math.round((globalHC.des.efte||0)*21*HOURS_PER_DAY*(utilDes/100));
+  const fteDes=capacityRoster.filter(p=>p.role==="Integrated Designer"&&p.type==="FTE").length;
+  const flDes=capacityRoster.filter(p=>p.role==="Integrated Designer"&&p.type==="Freelance").length;
+
+  // ── SUPPLY ────────────────────────────────────────────────────────────────
+  // Uses totalDesEfte (sum of all availFrac values across all designers,
+  // with ALL-division people counted once total).
+  // Correctly reflects start/end date reductions.
+  const desSupplyHrsPerMonth=Math.round(totalDesEfte*WORKING_DAYS_PER_MONTH*HOURS_PER_DAY*(utilDes/100));
+  const manualCap=Math.round(totalDesEfte*WORKING_DAYS_PER_MONTH*(utilDes/100)*manualRate);
+  const totalTeamPMCap=Math.round(totalPMEfte*projectsPerPM*(utilPM/100));
+
+  // ── ASSET CAPACITY PER DIVISION ────────────────────────────────────────────
+  // Uses desEfte[div] — availFrac-weighted, ALL-distributed
+  // Rate = blended (auto) or manual depending on go-live
+  const getDivCap=useCallback((div,month,withAuto)=>{
+    const efte=desEfte[div]||0;
+    const live=withAuto&&isAutoLive(div,month,autoConfig)&&autoEnabled;
+    const rate=live
+      ?Math.round(autoConfig[div].simplePct*autoQCRate+(1-autoConfig[div].simplePct)*manualRate)
+      :manualRate;
+    return Math.round(efte*WORKING_DAYS_PER_MONTH*(utilDes/100)*rate);
+  },[desEfte,autoConfig,autoEnabled,autoQCRate,manualRate,utilDes]);
+
+  const getDivCapManual=useCallback((div)=>{
+    return Math.round((desEfte[div]||0)*WORKING_DAYS_PER_MONTH*(utilDes/100)*manualRate);
+  },[desEfte,utilDes,manualRate]);
 
   const monthlyCap=useMemo(()=>FM.map(fm=>{
     const ua=autoEnabled&&autoScenario==="with";
-    const lr=ua?blendedRateFromQC("LLD",fm.month,autoConfig,qcMinsPerAsset,manualRate):manualRate;
-    const br=ua?blendedRateFromQC("LDB",fm.month,autoConfig,qcMinsPerAsset,manualRate):manualRate;
-    const pr=ua?blendedRateFromQC("PPD",fm.month,autoConfig,qcMinsPerAsset,manualRate):manualRate;
-    const lld=Math.round((poolsByDiv["LLD"].des.efte||0)*21*(utilDes/100)*lr);
-    const ldb=Math.round((poolsByDiv["LDB"].des.efte||0)*21*(utilDes/100)*br);
-    const ppd=Math.round((poolsByDiv["PPD"].des.efte||0)*21*(utilDes/100)*pr);
-    const lldM=Math.round((poolsByDiv["LLD"].des.efte||0)*21*(utilDes/100)*manualRate);
-    const ldbM=Math.round((poolsByDiv["LDB"].des.efte||0)*21*(utilDes/100)*manualRate);
-    const ppdM=Math.round((poolsByDiv["PPD"].des.efte||0)*21*(utilDes/100)*manualRate);
-    const anyAuto=isAutoLive("LLD",fm.month,autoConfig)||isAutoLive("LDB",fm.month,autoConfig)||isAutoLive("PPD",fm.month,autoConfig);
-    const manT=lldM+ldbM+ppdM,autoT=lld+ldb+ppd;
-    return{month:fm.month,total:autoT,lld,ldb,ppd,manualTotal:manT,lldAuto:isAutoLive("LLD",fm.month,autoConfig),ldbAuto:isAutoLive("LDB",fm.month,autoConfig),ppdAuto:isAutoLive("PPD",fm.month,autoConfig),anyAuto,preAutoCapacity:anyAuto?null:manT,postAutoCapacity:anyAuto?autoT:null};
-  }),[poolsByDiv,utilDes,autoEnabled,autoScenario,autoConfig,qcMinsPerAsset,manualRate]);
+    const lld=getDivCap("LLD",fm.month,ua);
+    const ldb=getDivCap("LDB",fm.month,ua);
+    const ppd=getDivCap("PPD",fm.month,ua);
+    const lldM=getDivCapManual("LLD");
+    const ldbM=getDivCapManual("LDB");
+    const ppdM=getDivCapManual("PPD");
+    const lldLive=ua&&isAutoLive("LLD",fm.month,autoConfig);
+    const ldbLive=ua&&isAutoLive("LDB",fm.month,autoConfig);
+    const ppdLive=ua&&isAutoLive("PPD",fm.month,autoConfig);
+    const anyAuto=lldLive||ldbLive||ppdLive;
+    const manT=lldM+ldbM+ppdM;
+    return{month:fm.month,total:lld+ldb+ppd,lld,ldb,ppd,manualTotal:manT,
+      lldAuto:lldLive,ldbAuto:ldbLive,ppdAuto:ppdLive,anyAuto,
+      preAutoCapacity:anyAuto?null:manT,postAutoCapacity:anyAuto?(lld+ldb+ppd):null};
+  }),[desEfte,getDivCap,getDivCapManual,autoEnabled,autoScenario,autoConfig]);
 
-  // ── DESIGNER WORKLOAD v18.6 ───────────────────────────────────────────────
-  //
-  // DESIGN PRINCIPLE (fixed from v18.5.x):
-  // ─────────────────────────────────────
-  // VOLUME (total assets per month) = FM forecast  fm.ldb + fm.ppd + fm.lld
-  //   → This is the authoritative source. Always correct, real numbers.
-  //
-  // SPLIT (auto vs manual ratio) = Volume tab mix autoEligible flags
-  //   → For each division: auto ratio = auto-eligible assets / total assets
-  //   → This determines WHAT PROPORTION is automated, not how many total assets
-  //
-  // MASTER PROJECTS = derived from FM project counts × auto ratio × auto flag
-  //   → Uses fm.ldbProj / ppdProj / lldProj × weeksInMonth to get monthly project count
-  //   → Auto projects = monthly projects × auto ratio for that division
-  //
-  // QA CHECKS:
-  // Jan (pre-LLD go-live): anyAutoLive=false → masterHrs=0, qcHrs=0, all assets manual ✓
-  // Jun (all live): split applies, bars show all three colours ✓
-  // Jun total demand = (auto_proj×mastersPerProj×hrsPerMaster) + (auto_assets×qcMins/60) + (manual_assets/rate×8)
-  // Jun manual assets with default config (all divs 50% auto) ≈ 25272/2 = 12,636 assets
-  //   → manual hours ≈ 12,636/25×8 = 4,044h
-  // Supply = 83 designers × 21d × 8h × 82% = 11,434h
-  // ─────────────────────────────────────────────────────────────────────────
-  const designerWorkload=useMemo(()=>{
+  // ── DESIGNER WORKLOAD ─────────────────────────────────────────────────────
+  // Volume:       FM forecast assets per division (authoritative)
+  // Auto split:   autoConfig.div.simplePct × FM assets (only if live)
+  // Manual:       fm.gt − auto assets (guaranteed auto+manual = fm.gt)
+  // Auto projects: fm.divProj × simplePct (once per project brief, NO weeksInMonth)
+  // Supply:       totalDesEfte × 21d × 8h × utilDes%
+  const designerWorkload=useMemo(()=>FM.map(fm=>{
+    const lldLive=isAutoLive("LLD",fm.month,autoConfig);
+    const ldbLive=isAutoLive("LDB",fm.month,autoConfig);
+    const ppdLive=isAutoLive("PPD",fm.month,autoConfig);
+    const anyAutoLive=lldLive||ldbLive||ppdLive;
 
-    // Step 1: Compute auto ratio per division from Volume tab
-    // auto ratio = auto-eligible total assets / all total assets (for that division)
-    const autoRatioByDiv=DIVS.reduce((acc,div)=>{
-      const assetKey=ASSET_KEY[div];
-      const totalAssets=mix.reduce((s,m)=>s+((m[div]||0)*(m[assetKey]||0)),0);
-      const autoAssets=mix.filter(m=>m.autoEligible).reduce((s,m)=>s+((m[div]||0)*(m[assetKey]||0)),0);
-      acc[div]=totalAssets>0?autoAssets/totalAssets:0;
-      return acc;
-    },{});
+    const lldAutoAssets=lldLive?Math.round(fm.lld*autoConfig.LLD.simplePct):0;
+    const ldbAutoAssets=ldbLive?Math.round(fm.ldb*autoConfig.LDB.simplePct):0;
+    const ppdAutoAssets=ppdLive?Math.round(fm.ppd*autoConfig.PPD.simplePct):0;
+    const totalAutoAssets=lldAutoAssets+ldbAutoAssets+ppdAutoAssets;
+    const totalManualAssets=fm.gt-totalAutoAssets;
 
-    // Step 2: Compute average assets per auto project per division from Volume tab
-    // Used to back-calculate project count from asset count for master setup
-    const avgAssetsPerAutoProj=DIVS.reduce((acc,div)=>{
-      const assetKey=ASSET_KEY[div];
-      const autoProjs=mix.filter(m=>m.autoEligible).reduce((s,m)=>s+(m[div]||0),0);
-      const autoAssets=mix.filter(m=>m.autoEligible).reduce((s,m)=>s+((m[div]||0)*(m[assetKey]||0)),0);
-      acc[div]=autoProjs>0?autoAssets/autoProjs:50; // fallback 50 assets/project
-      return acc;
-    },{});
+    // Auto projects: weekly concurrent project count × simplePct
+    // NO × weeksInMonth — masters are built once per project brief
+    const lldAutoProjs=lldLive?Math.round(fm.lldProj*autoConfig.LLD.simplePct):0;
+    const ldbAutoProjs=ldbLive?Math.round(fm.ldbProj*autoConfig.LDB.simplePct):0;
+    const ppdAutoProjs=ppdLive?Math.round(fm.ppdProj*autoConfig.PPD.simplePct):0;
+    const totalAutoProjs=lldAutoProjs+ldbAutoProjs+ppdAutoProjs;
 
-    return FM.map(fm=>{
-      // Is automation live for each division this month?
-      const lldLive=isAutoLive("LLD",fm.month,autoConfig);
-      const ldbLive=isAutoLive("LDB",fm.month,autoConfig);
-      const ppdLive=isAutoLive("PPD",fm.month,autoConfig);
-      const anyAutoLive=lldLive||ldbLive||ppdLive;
+    const masterSetupHrs=Math.round(totalAutoProjs*mastersPerProj*hrsPerMaster);
+    const qcHrs=Math.round(totalAutoAssets*qcMinsPerAsset/60);
+    const manualProdHrs=Math.round((totalManualAssets/manualRate)*HOURS_PER_DAY);
+    const totalDemandHrs=masterSetupHrs+qcHrs+manualProdHrs;
+    const utilPct=desSupplyHrsPerMonth>0?Math.round((totalDemandHrs/desSupplyHrsPerMonth)*100):0;
 
-      // Step 3: FM assets are the ground truth for total volume this month
-      // Auto assets per division = FM total × auto ratio × (live flag)
-      const lldAutoAssets = lldLive ? Math.round(fm.lld * autoRatioByDiv.LLD) : 0;
-      const ldbAutoAssets = ldbLive ? Math.round(fm.ldb * autoRatioByDiv.LDB) : 0;
-      const ppdAutoAssets = ppdLive ? Math.round(fm.ppd * autoRatioByDiv.PPD) : 0;
-      const totalAutoAssets = lldAutoAssets + ldbAutoAssets + ppdAutoAssets;
-
-      // Manual assets = remainder (FM total minus live auto assets)
-      const totalManualAssets = fm.gt - totalAutoAssets;
-
-      // Step 4: Auto project count per division = auto assets / avg assets per auto project
-      // Used to calculate master setup hours
-      const lldAutoProjs = lldLive && avgAssetsPerAutoProj.LLD > 0
-        ? Math.round(lldAutoAssets / avgAssetsPerAutoProj.LLD) : 0;
-      const ldbAutoProjs = ldbLive && avgAssetsPerAutoProj.LDB > 0
-        ? Math.round(ldbAutoAssets / avgAssetsPerAutoProj.LDB) : 0;
-      const ppdAutoProjs = ppdLive && avgAssetsPerAutoProj.PPD > 0
-        ? Math.round(ppdAutoAssets / avgAssetsPerAutoProj.PPD) : 0;
-      const totalAutoProjs = lldAutoProjs + ldbAutoProjs + ppdAutoProjs;
-
-      // Stream A1: Master setup hours = auto projects × masters per project × hrs per master
-      const masterSetupHrs = Math.round(totalAutoProjs * mastersPerProj * hrsPerMaster);
-
-      // Stream A2: QC hours = auto assets × mins per asset ÷ 60
-      const qcHrs = Math.round(totalAutoAssets * qcMinsPerAsset / 60);
-
-      // Stream B: Manual production hours = manual assets ÷ rate × hrs per day
-      const manualProdHrs = Math.round((totalManualAssets / manualRate) * HOURS_PER_DAY);
-
-      const totalDemandHrs = masterSetupHrs + qcHrs + manualProdHrs;
-      const supplyHrs = desSupplyHrsPerMonth;
-      const utilPct = supplyHrs > 0 ? Math.round((totalDemandHrs / supplyHrs) * 100) : 0;
-
-      return {
-        month: fm.month,
-        autoProj: totalAutoProjs,
-        totalAutoAssets,
-        totalManualAssets,
-        masterSetupHrs,
-        qcHrs,
-        manualProdHrs,
-        totalDemandHrs,
-        supplyHrs,
-        utilPct,
-        gapHrs: supplyHrs - totalDemandHrs,
-        anyAuto: anyAutoLive,
-      };
-    });
-  },[mix, autoConfig, mastersPerProj, hrsPerMaster, qcMinsPerAsset, manualRate, desSupplyHrsPerMonth]);
+    return{month:fm.month,autoProj:totalAutoProjs,totalAutoAssets,totalManualAssets,
+      masterSetupHrs,qcHrs,manualProdHrs,totalDemandHrs,
+      supplyHrs:desSupplyHrsPerMonth,utilPct,
+      gapHrs:desSupplyHrsPerMonth-totalDemandHrs,anyAuto:anyAutoLive};
+  }),[autoConfig,mastersPerProj,hrsPerMaster,qcMinsPerAsset,manualRate,desSupplyHrsPerMonth]);
 
   const pmAnalysis=useMemo(()=>FM.map(fm=>{
-    const teamCap=Math.round(totalPMs*projectsPerPM*(utilPM/100));
+    const teamCap=Math.round(totalPMEfte*projectsPerPM*(utilPM/100));
     const demand=fm.monthlyForecast;
     const oliverTotalCap=fm.permPMMonthly+fm.flyPMMonthly;
-    return{...fm,teamCap,demand,oliverTotalCap,teamCoverPct:demand>0?Math.round((teamCap/demand)*100):0,oliverCoverPct:demand>0?Math.round((oliverTotalCap/demand)*100):0,teamGap:teamCap-demand,teamReqPerPM:totalPMs>0?(demand/totalPMs).toFixed(1):"—"};
-  }),[totalPMs,projectsPerPM,utilPM]);
+    return{...fm,teamCap,demand,oliverTotalCap,
+      teamCoverPct:demand>0?Math.round((teamCap/demand)*100):0,
+      oliverCoverPct:demand>0?Math.round((oliverTotalCap/demand)*100):0,
+      teamGap:teamCap-demand,
+      teamReqPerPM:totalPMEfte>0?(demand/totalPMEfte).toFixed(1):"—"};
+  }),[totalPMEfte,projectsPerPM,utilPM]);
 
   const calcSlaMap=useMemo(()=>{const m={};PT_BASE.forEach(pt=>{const defs=getDefaultDays(pt.id,calcCplx,calcAssetBand,eanBand,syndCplx,clientDays);const bd={};let total=0;SK.forEach(k=>{const d=slaOv[pt.id]?.[k]!==undefined?slaOv[pt.id][k]:defs[k]??0;bd[k]=d;total+=d;});const w=getWeights(pt.id);m[pt.id]={total,breakdown:bd,defaults:defs,pmDays:Math.round(total*w.pm),desDays:Math.round(total*w.des)};});return m;},[calcCplx,calcAssetBand,eanBand,syndCplx,clientDays,slaOv]);
   const mixAnalysis=useMemo(()=>DIVS.map(div=>{let tProj=0,tAssets=0;mix.forEach(m=>{tProj+=m[div]||0;tAssets+=(m[ASSET_KEY[div]]||0)*(m[div]||0);});return{div,tProj,tAssets};}),[mix]);
   const combined=useMemo(()=>{const a={tProj:0,tAssets:0};mixAnalysis.forEach(d=>{a.tProj+=d.tProj;a.tAssets+=d.tAssets;});return a;},[mixAnalysis]);
 
-  const forecastChartData=FM.map((fm,i)=>{const a=actuals[i],mc=monthlyCap[i];return{...fm,capacityTotal:mc?.total||0,capacityLdb:mc?.ldb||0,capacityPpd:mc?.ppd||0,capacityLld:mc?.lld||0,manualCapacity:mc?.manualTotal||0,lldAuto:mc?.lldAuto,ldbAuto:mc?.ldbAuto,ppdAuto:mc?.ppdAuto,anyAuto:mc?.anyAuto,preAutoCapacity:mc?.preAutoCapacity,postAutoCapacity:mc?.postAutoCapacity,actualAssets:a.actualAssets||null,actualLdb:a.actualLdb||null,actualPpd:a.actualPpd||null,actualLld:a.actualLld||null};});
-  const activeForecastData=useMemo(()=>forecastChartData.map(d=>{if(forecastDiv==="LDB")return{...d,targetAssets:d.ldb,capacityLine:d.capacityLdb,actualAssets:d.actualLdb};if(forecastDiv==="PPD")return{...d,targetAssets:d.ppd,capacityLine:d.capacityPpd,actualAssets:d.actualPpd};if(forecastDiv==="LLD")return{...d,targetAssets:d.lld,capacityLine:d.capacityLld,actualAssets:d.actualLld};return{...d,targetAssets:d.gt,capacityLine:d.capacityTotal,actualAssets:d.actualAssets};}),[forecastChartData,forecastDiv]);
+  const forecastChartData=useMemo(()=>FM.map((fm,i)=>{
+    const a=actuals[i],mc=monthlyCap[i];
+    return{...fm,capacityTotal:mc?.total||0,capacityLdb:mc?.ldb||0,capacityPpd:mc?.ppd||0,capacityLld:mc?.lld||0,
+      manualCapacity:mc?.manualTotal||0,lldAuto:mc?.lldAuto,ldbAuto:mc?.ldbAuto,ppdAuto:mc?.ppdAuto,
+      anyAuto:mc?.anyAuto,preAutoCapacity:mc?.preAutoCapacity,postAutoCapacity:mc?.postAutoCapacity,
+      actualAssets:a.actualAssets||null,actualLdb:a.actualLdb||null,actualPpd:a.actualPpd||null,actualLld:a.actualLld||null};
+  }),[actuals,monthlyCap]);
+
+  const activeForecastData=useMemo(()=>forecastChartData.map(d=>{
+    if(forecastDiv==="LDB")return{...d,targetAssets:d.ldb,capacityLine:d.capacityLdb,actualAssets:d.actualLdb};
+    if(forecastDiv==="PPD")return{...d,targetAssets:d.ppd,capacityLine:d.capacityPpd,actualAssets:d.actualPpd};
+    if(forecastDiv==="LLD")return{...d,targetAssets:d.lld,capacityLine:d.capacityLld,actualAssets:d.actualLld};
+    return{...d,targetAssets:d.gt,capacityLine:d.capacityTotal,actualAssets:d.actualAssets};
+  }),[forecastChartData,forecastDiv]);
 
   const calcPt=PT.find(p=>p.id===calcType);
   const calcSla=calcSlaMap[calcType];
   const tmFiltered=useMemo(()=>roster.filter(p=>{if(tmDiv!=="All"&&p.division!==tmDiv)return false;if(tmType!=="All"&&p.type!==tmType)return false;if(tmRole!=="All"&&p.role!==tmRole)return false;if(tmSearch&&!p.name.toLowerCase().includes(tmSearch.toLowerCase()))return false;return true;}),[roster,tmSearch,tmDiv,tmType,tmRole]);
   const pendingStarters=useMemo(()=>capacityRoster.filter(p=>p.startDate&&p.startDate!=="now"&&new Date(p.startDate)>new Date()).sort((a,b)=>new Date(a.startDate)-new Date(b.startDate)),[capacityRoster]);
   const pendingLeavers=useMemo(()=>capacityRoster.filter(p=>p.endDate&&p.endDate!=="never"&&new Date(p.endDate)>new Date()).sort((a,b)=>new Date(a.endDate)-new Date(b.endDate)),[capacityRoster]);
-  const designerChartData=designerWorkload.map(d=>({month:d.month,"Master Setup":d.masterSetupHrs,"QC Review":d.qcHrs,"Manual Production":d.manualProdHrs,Supply:d.supplyHrs}));
+  const designerChartData=designerWorkload.map(d=>({month:d.month,"Manual Production":d.manualProdHrs,"Master Setup":d.masterSetupHrs,"QC Review":d.qcHrs,Supply:d.supplyHrs}));
 
-  // RAG: utilisation — green=low (comfortable), red=high (over capacity)
   const ragU=u=>u<=85?{color:"#22C55E",bg:"#F0FDF4",text:"#15803D"}:u<=100?{color:"#F59E0B",bg:"#FFFBEB",text:"#B45309"}:{color:"#EF4444",bg:"#FEF2F2",text:"#B91C1C"};
-  // RAG: coverage — green=high (meets target), red=low (cannot meet)
   const ragCov=p=>p>=100?{color:"#22C55E",bg:"#F0FDF4",text:"#15803D"}:p>=75?{color:"#F59E0B",bg:"#FFFBEB",text:"#B45309"}:{color:"#EF4444",bg:"#FEF2F2",text:"#B91C1C"};
 
   const TAB_META={
     capacity:{description:"Can the team handle the workload? Shows PM and designer capacity vs L'Oréal's project forecast, month by month."},
     forecast:{description:"Are we on track to deliver the asset volumes L'Oréal expects? Track forecast vs capacity vs actuals across all three divisions."},
-    automation:{description:"How does automation change what we can deliver? Configure go-live dates, project eligibility and see the capacity uplift it creates."},
-    volume:{description:"What's the expected project mix? Set project counts and average asset volumes per brief type to calibrate the capacity model."},
+    automation:{description:"How does automation change what we can deliver? Configure go-live dates and Simple% per division — these directly drive the designer hours model."},
+    volume:{description:"Project mix planning reference. Auto/manual split for capacity is controlled by Simple% on the Automation tab."},
     sla:{description:"How long will a specific project take? Estimate the end-to-end timeline for any brief by type, complexity and asset volume."},
-    team:{description:"Who is on the team? Manage the live roster of PMs and designers — add, edit, set start/exit dates and track capacity contributions."},
-    settings:{description:"Configure all model assumptions in one place. Changes here update every calculation across the tool instantly."},
+    team:{description:"Who is on the team? Headcount and start/end dates here drive all capacity and supply calculations."},
+    settings:{description:"Configure all model assumptions. Changes here update every calculation across the tool instantly."},
   };
 
   return(
@@ -505,11 +532,11 @@ export default function App(){
               </div>
               <div className="w-px h-5 bg-gray-200 mx-1"/>
               <QuickSlider label="PM Util" value={utilPM} min={60} max={95} onChange={v=>{setUtilPM(v);saveSettings({utilPM:v});}} display={`${utilPM}%`} accent="#3B82F6" hint="Productive PM time %"/>
-              <QuickSlider label="Des Util" value={utilDes} min={60} max={95} onChange={v=>{setUtilDes(v);saveSettings({utilDes:v});}} display={`${utilDes}%`} accent="#8B5CF6" hint="Productive designer time %"/>
+              <QuickSlider label="Des Util" value={utilDes} min={60} max={95} onChange={v=>{setUtilDes(v);saveSettings({utilDes:v});}} display={`${utilDes}%`} accent="#8B5CF6" hint={`${desSupplyHrsPerMonth.toLocaleString()}h/mo supply · ${totalDesEfte.toFixed(1)} efte designers`}/>
               <QuickSlider label="Hrs/project" value={hoursPerProject} min={0.5} max={8} step={0.5} onChange={v=>{setHoursPerProject(v);saveSettings({hoursPerProject:v});}} display={`${hoursPerProject}h`} accent="#3B82F6" hint={`→ ${projectsPerPM} concurrent/PM · ${totalTeamPMCap.toLocaleString()} team cap/mo`}/>
-              <QuickSlider label="Manual rate" value={manualRate} min={10} max={50} onChange={v=>{setManualRate(v);saveSettings({manualRate:v});}} display={`${manualRate}/day`} accent="#F97316" hint={`Manual asset cap: ${manualCap.toLocaleString()}/mo`}/>
-              <QuickSlider label="QC time" value={qcMinsPerAsset} min={0.5} max={10} step={0.5} onChange={v=>{setQcMinsPerAsset(v);saveSettings({qcMinsPerAsset:v});}} display={`${qcMinsPerAsset}min`} accent="#8B5CF6" hint={`= ${autoQCRate} assets/day · ${(autoQCRate/manualRate).toFixed(1)}× vs manual`}/>
-              <QuickSlider label="Masters/proj" value={mastersPerProj} min={1} max={6} onChange={v=>{setMastersPerProj(v);saveSettings({mastersPerProj:v});}} display={`${mastersPerProj}×${hrsPerMaster}h=${totalMasterHrs}h`} accent="#8B5CF6" hint={`${totalMasterHrs}h designer setup per auto project`}/>
+              <QuickSlider label="Manual rate" value={manualRate} min={10} max={50} onChange={v=>{setManualRate(v);saveSettings({manualRate:v});}} display={`${manualRate}/day`} accent="#F97316" hint={`Team manual cap: ${manualCap.toLocaleString()} assets/mo`}/>
+              <QuickSlider label="QC time" value={qcMinsPerAsset} min={0.5} max={10} step={0.5} onChange={v=>{setQcMinsPerAsset(v);saveSettings({qcMinsPerAsset:v});}} display={`${qcMinsPerAsset}min`} accent="#8B5CF6" hint={`= ${autoQCRate} assets/day on canvas`}/>
+              <QuickSlider label="Masters/proj" value={mastersPerProj} min={1} max={6} onChange={v=>{setMastersPerProj(v);saveSettings({mastersPerProj:v});}} display={`${mastersPerProj}×${hrsPerMaster}h=${totalMasterHrs}h`} accent="#8B5CF6" hint={`${totalMasterHrs}h setup per auto project`}/>
               <div className="w-px h-5 bg-gray-200 mx-1"/>
               <button onClick={()=>setActiveTab("settings")} className="text-xs font-medium text-gray-400 hover:text-gray-700 px-3 py-1 rounded-xl hover:bg-white hover:shadow-sm border border-transparent hover:border-gray-200 transition-all">All settings →</button>
               <div className="ml-auto flex items-center gap-2">
@@ -536,33 +563,36 @@ export default function App(){
           <div className="space-y-10">
             <div>
               <SectionHeader number="A" title="Team Snapshot by Division" subtitle="How many PMs and Integrated Designers do we have in each division right now?"
-                what="Headcount by division and contract type. All capacity calculations flow from these numbers."
-                insight={{label:"Keep current",text:"Figures come from the Team tab. Changes there recalculate everything automatically."}} color="#1D1D1F"/>
+                what="Headcount by division. Capacity calculations use availFrac-weighted efte — start/end dates reduce each person's contribution proportionally. ALL-division people contribute ⅓ to each division."
+                insight={{label:"Keep current",text:"Start/end dates on the Team tab affect everyone's capacity contribution. Set them accurately."}} color="#1D1D1F"/>
               <div className="grid grid-cols-3 gap-4">
-                {DIVS.map(div=>{const hc=poolsByDiv[div],mc=monthlyCap[0],dc=div==="LDB"?mc?.ldb:div==="PPD"?mc?.ppd:mc?.lld;return(
-                  <Card key={div}>
-                    <div className="flex items-center gap-2 mb-4"><div className="w-2.5 h-2.5 rounded-full" style={{background:DC[div]}}/><span className="text-sm font-semibold text-gray-900">{div}</span></div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="p-3 rounded-xl" style={{background:DC[div]+"10"}}><p className="text-xs text-gray-500 mb-1">Project Managers</p><p className="text-2xl font-bold" style={{color:DC[div]}}>{hc.pm.total}</p><p className="text-xs text-gray-400 mt-0.5">{hc.pm.fte} FTE · {hc.pm.fl} FL</p></div>
-                      <div className="p-3 rounded-xl bg-gray-50"><p className="text-xs text-gray-500 mb-1">Designers</p><p className="text-2xl font-bold text-gray-900">{hc.des.total}</p><p className="text-xs text-gray-400 mt-0.5">{hc.des.fte} FTE · {hc.des.fl} FL</p></div>
-                    </div>
-                    <div className="mt-3 pt-3 border-t border-gray-100"><p className="text-xs text-gray-400">Monthly asset capacity (Jan baseline)</p><p className="text-sm font-semibold text-gray-900 mt-0.5">{(dc||0).toLocaleString()} assets</p></div>
-                  </Card>
-                );})}
+                {DIVS.map(div=>{
+                  const mc=monthlyCap[0];
+                  const dc=div==="LDB"?mc?.ldb:div==="PPD"?mc?.ppd:mc?.lld;
+                  return(
+                    <Card key={div}>
+                      <div className="flex items-center gap-2 mb-4"><div className="w-2.5 h-2.5 rounded-full" style={{background:DC[div]}}/><span className="text-sm font-semibold text-gray-900">{div}</span></div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="p-3 rounded-xl" style={{background:DC[div]+"10"}}><p className="text-xs text-gray-500 mb-1">Project Managers</p><p className="text-2xl font-bold" style={{color:DC[div]}}>{poolsByDiv[div].pm.total}</p><p className="text-xs text-gray-400 mt-0.5">{poolsByDiv[div].pm.fte} FTE · {poolsByDiv[div].pm.fl} FL</p></div>
+                        <div className="p-3 rounded-xl bg-gray-50"><p className="text-xs text-gray-500 mb-1">Designers</p><p className="text-2xl font-bold text-gray-900">{poolsByDiv[div].des.total}</p><p className="text-xs text-gray-400 mt-0.5">{poolsByDiv[div].des.fte} FTE · {poolsByDiv[div].des.fl} FL</p><p className="text-xs text-gray-400 mt-0.5">{desEfte[div].toFixed(1)} efte</p></div>
+                      </div>
+                      <div className="mt-3 pt-3 border-t border-gray-100"><p className="text-xs text-gray-400">Monthly asset capacity (Jan, manual)</p><p className="text-sm font-semibold text-gray-900 mt-0.5">{getDivCapManual(div).toLocaleString()} assets</p></div>
+                    </Card>
+                  );
+                })}
               </div>
             </div>
 
             <div>
               <SectionHeader number="B" title="Project Manager Capacity vs Forecast"
                 subtitle="Can our PMs handle the number of projects L'Oréal is forecasting each month?"
-                what={`Each PM carries ${projectsPerPM} concurrent projects (${availHrsPM}h ÷ ${hoursPerProject}h/project).`}
-                insight={{label:"Red months",text:"demand exceeds PM capacity. Reduce Hrs/project in settings or flag a headcount gap."}} color="#3B82F6"/>
+                what={`Each PM carries ${projectsPerPM} concurrent projects (${availHrsPM}h ÷ ${hoursPerProject}h/project). Start/end dates reduce PM efte proportionally.`}
+                insight={{label:"Red months",text:"demand exceeds PM capacity. Adjust Hrs/project in settings or flag a headcount gap."}} color="#3B82F6"/>
               <Card padding="p-0">
                 <div className="px-6 pt-5 pb-4 border-b border-gray-50">
                   <CardDescriptor title="Three lines compared month by month"
-                    description="Client Forecast = L'Oréal's expectation. Oliver PM Cap = what Oliver's own forecast assumed. Our PM Cap = what your named team can deliver."
-                    howToRead="Coverage % = Our PM Cap ÷ Client Forecast. Green ≥100% = covered. Amber ≥75% = near limit. Red <75% = shortfall."
-                    accent="#3B82F6"/>
+                    description="Client Forecast = L'Oréal's expectation. Oliver PM Cap = what Oliver's own forecast assumed. Our PM Cap = what your team can deliver."
+                    howToRead="Green ≥100% = covered. Amber ≥75% = near limit. Red <75% = shortfall." accent="#3B82F6"/>
                 </div>
                 <div className="px-6 pb-2">
                   <div className="grid grid-cols-5 gap-4 text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">
@@ -584,33 +614,25 @@ export default function App(){
                   </div>
                 </div>
                 <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl">
-                  <p className="text-xs text-gray-400"><span className="font-medium text-gray-600">Formula:</span> Our PM Cap = {Math.round(totalPMs)} PMs × {projectsPerPM} concurrent × {utilPM}% = {totalTeamPMCap.toLocaleString()} projects/month</p>
+                  <p className="text-xs text-gray-400"><span className="font-medium text-gray-600">Formula:</span> Our PM Cap = {totalPMEfte.toFixed(1)} efte PMs × {projectsPerPM} concurrent × {utilPM}% = {totalTeamPMCap.toLocaleString()} projects/month</p>
                 </div>
               </Card>
             </div>
 
             <div>
               <SectionHeader number="C" title="Designer Capacity — Hours Model"
-                subtitle="Are our designers over or under capacity each month?"
-                what="Total asset volume comes directly from the FM forecast (fm.ldb + fm.ppd + fm.lld). The Volume tab determines the auto/manual split ratio. Auto assets → master setup + QC hours. Manual assets → production hours."
-                insight={{label:"Volume source",text:"FM forecast is the authoritative asset volume. Volume tab only controls the split between auto-eligible and manual project types — not the total."}} color="#8B5CF6"/>
+                subtitle="Are our designers over or under capacity each month, across all three work streams?"
+                what="FM forecast assets are the volume. Automation tab Simple% splits auto vs manual. Supply = availFrac-weighted designer efte × 21d × 8h × utilDes%."
+                insight={{label:"Supply",text:`${totalDesEfte.toFixed(1)} efte × 21d × 8h × ${utilDes}% = ${desSupplyHrsPerMonth.toLocaleString()}h/mo`}} color="#8B5CF6"/>
               <div className="grid grid-cols-3 gap-4 mb-6">
                 {[
-                  {color:"#6366F1",dot:"A1",label:"Master Setup",desc:`Auto projects × ${mastersPerProj} masters × ${hrsPerMaster}h each. Only after division go-live.`},
-                  {color:"#22C55E",dot:"A2",label:"QC Review",desc:`Auto assets × ${qcMinsPerAsset} min/asset ÷ 60. Only after division go-live. = ${autoQCRate} assets/day.`},
-                  {color:"#F97316",dot:"B",label:"Manual Production",desc:`All non-auto assets ÷ ${manualRate}/day × 8h. Pre-go-live all assets count as manual.`},
-                ].map(s=>(
-                  <div key={s.label} className="flex items-start gap-3 p-4 bg-white rounded-2xl border border-gray-100 shadow-sm">
-                    <div className="w-7 h-7 rounded-lg flex items-center justify-center text-white text-xs font-bold flex-shrink-0" style={{background:s.color}}>{s.dot}</div>
-                    <div><p className="text-sm font-semibold text-gray-900">{s.label}</p><p className="text-xs text-gray-400 mt-1 leading-relaxed">{s.desc}</p></div>
-                  </div>
-                ))}
+                  {color:"#F97316",dot:"B",label:"Manual Production",desc:`All non-auto assets ÷ ${manualRate}/day × 8h. 100% of assets pre-go-live.`},
+                  {color:"#6366F1",dot:"A1",label:"Master Setup",desc:`Auto projects × ${mastersPerProj} masters × ${hrsPerMaster}h. Once per project brief.`},
+                  {color:"#22C55E",dot:"A2",label:"QC Review",desc:`Auto assets × ${qcMinsPerAsset} min ÷ 60 = ${autoQCRate} assets/day.`},
+                ].map(s=>(<div key={s.label} className="flex items-start gap-3 p-4 bg-white rounded-2xl border border-gray-100 shadow-sm"><div className="w-7 h-7 rounded-lg flex items-center justify-center text-white text-xs font-bold flex-shrink-0" style={{background:s.color}}>{s.dot}</div><div><p className="text-sm font-semibold text-gray-900">{s.label}</p><p className="text-xs text-gray-400 mt-1 leading-relaxed">{s.desc}</p></div></div>))}
               </div>
               <Card className="mb-4">
-                <CardDescriptor title="Designer hours — demand vs supply chart"
-                  description="Stacked bars = total hours demanded from the forecast asset volume, split by work type. Dashed line = available supply. Bars above the line = over capacity."
-                  howToRead="Purple = master setup · Green = QC · Orange = manual. Jan–Mar: all orange (pre-go-live). Apr+: purple and green appear as automation activates."
-                  accent="#8B5CF6"/>
+                <CardDescriptor title="Designer hours — demand vs supply" description="Stacked bars = hours demanded from FM forecast. Dashed = supply. Bars above line = over capacity." howToRead="Orange = manual · Purple = master setup · Green = QC. Jan–Mar: all orange. Apr+: purple+green appear." accent="#8B5CF6"/>
                 <ResponsiveContainer width="100%" height={250}>
                   <ComposedChart data={designerChartData} margin={{top:0,right:10,left:0,bottom:0}}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false}/>
@@ -618,56 +640,44 @@ export default function App(){
                     <YAxis tick={{fontSize:11,fill:"#9CA3AF"}} axisLine={false} tickLine={false} tickFormatter={v=>v>=1000?`${(v/1000).toFixed(0)}k`:v}/>
                     <Tooltip contentStyle={{borderRadius:"12px",border:"none",boxShadow:"0 4px 24px rgba(0,0,0,0.08)"}} formatter={(v,n)=>[`${v.toLocaleString()}h`,n]}/>
                     <Legend iconType="circle" iconSize={8} wrapperStyle={{fontSize:"12px"}}/>
+                    <Bar dataKey="Manual Production" stackId="a" fill="#F97316"/>
                     <Bar dataKey="Master Setup" stackId="a" fill="#6366F1"/>
-                    <Bar dataKey="QC Review" stackId="a" fill="#22C55E"/>
-                    <Bar dataKey="Manual Production" stackId="a" fill="#F97316" radius={[3,3,0,0]}/>
+                    <Bar dataKey="QC Review" stackId="a" fill="#22C55E" radius={[3,3,0,0]}/>
                     <Line type="monotone" dataKey="Supply" name={`Supply (${desSupplyHrsPerMonth.toLocaleString()}h/mo)`} stroke="#1D1D1F" strokeWidth={2} dot={false} strokeDasharray="6 3"/>
                   </ComposedChart>
                 </ResponsiveContainer>
               </Card>
               <Card padding="p-0">
                 <div className="px-6 pt-5 pb-2">
-                  <CardDescriptor title="Designer hours — monthly detail"
-                    description="Exact hours per stream per month. Util % = total demand ÷ available supply."
-                    howToRead="Green ≤85% = comfortable. Amber ≤100% = near limit. Red >100% = over capacity."
-                    accent="#8B5CF6"/>
+                  <CardDescriptor title="Designer hours — monthly detail" description="Exact hours per stream. Util % = total demand ÷ available supply." howToRead="Green ≤85% = comfortable. Amber ≤100% = near limit. Red >100% = over capacity." accent="#8B5CF6"/>
                 </div>
                 <div className="px-6 pb-4">
                   <div className="grid gap-2 text-xs font-medium text-gray-400 uppercase tracking-wide mb-3" style={{gridTemplateColumns:"3rem 1fr 1fr 1fr 1fr 1fr 1fr 1fr 3.5rem"}}>
-                    <span>Month</span>
-                    <span className="text-right">FM assets</span>
-                    <span className="text-right" style={{color:"#6366F1"}}>Auto proj</span>
-                    <span className="text-right" style={{color:"#6366F1"}}>Master h</span>
-                    <span className="text-right" style={{color:"#22C55E"}}>QC h</span>
-                    <span className="text-right" style={{color:"#F97316"}}>Manual h</span>
-                    <span className="text-right">Demand</span>
-                    <span className="text-right text-gray-400">Supply</span>
-                    <span className="text-right">Util</span>
+                    <span>Month</span><span className="text-right">FM Total</span><span className="text-right" style={{color:"#F97316"}}>Manual h</span><span className="text-right" style={{color:"#6366F1"}}>Auto proj</span><span className="text-right" style={{color:"#6366F1"}}>Master h</span><span className="text-right" style={{color:"#22C55E"}}>QC h</span><span className="text-right">Demand</span><span className="text-right text-gray-400">Supply</span><span className="text-right">Util</span>
                   </div>
                   <div className="divide-y divide-gray-50 -mx-6 px-6">
                     {designerWorkload.map((row,i)=>{
-                      const fm=FM[i];
-                      const rg=ragU(row.utilPct);
+                      const fm=FM[i];const rg=ragU(row.utilPct);
                       return(
                         <div key={row.month} className={`py-3 hover:bg-gray-50 -mx-6 px-6 transition-colors ${row.gapHrs<0?"bg-red-50/30":""}`}>
                           <div className="grid gap-2 items-center text-sm" style={{gridTemplateColumns:"3rem 1fr 1fr 1fr 1fr 1fr 1fr 1fr 3.5rem"}}>
                             <span className="font-medium text-gray-900">{row.month}{row.anyAuto&&<span className="ml-0.5 text-green-400">⚡</span>}</span>
                             <span className="text-right text-gray-500">{fm.gt.toLocaleString()}</span>
-                            <span className="text-right text-indigo-600 font-medium">{row.autoProj.toLocaleString()}</span>
+                            <span className="text-right font-semibold text-orange-600">{row.manualProdHrs.toLocaleString()}h</span>
+                            <span className="text-right text-indigo-600">{row.autoProj}</span>
                             <span className="text-right font-semibold text-indigo-700">{row.masterSetupHrs.toLocaleString()}h</span>
                             <span className="text-right font-semibold text-green-700">{row.qcHrs.toLocaleString()}h</span>
-                            <span className="text-right font-semibold text-orange-600">{row.manualProdHrs.toLocaleString()}h</span>
                             <span className={`text-right font-bold ${row.totalDemandHrs>row.supplyHrs?"text-red-600":"text-gray-900"}`}>{row.totalDemandHrs.toLocaleString()}h</span>
                             <span className="text-right text-gray-400">{row.supplyHrs.toLocaleString()}h</span>
                             <div className="flex justify-end"><span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{color:rg.text,background:rg.bg}}>{row.utilPct}%</span></div>
                           </div>
                           <div className="flex mt-1.5 rounded-full overflow-hidden h-1">
+                            <div style={{width:`${Math.min(row.manualProdHrs/row.supplyHrs*100,100)}%`,background:"#F97316"}}/>
                             <div style={{width:`${Math.min(row.masterSetupHrs/row.supplyHrs*100,100)}%`,background:"#6366F1"}}/>
                             <div style={{width:`${Math.min(row.qcHrs/row.supplyHrs*100,100)}%`,background:"#22C55E"}}/>
-                            <div style={{width:`${Math.min(row.manualProdHrs/row.supplyHrs*100,100)}%`,background:"#F97316"}}/>
                             <div style={{flex:1,background:"#F3F4F6"}}/>
                           </div>
-                          {row.gapHrs<0&&<p className="text-xs mt-1.5 text-red-500">Over by {Math.abs(row.gapHrs).toLocaleString()}h — ~{Math.ceil(Math.abs(row.gapHrs)/(21*HOURS_PER_DAY*(utilDes/100)))} additional designer(s) needed</p>}
+                          {row.gapHrs<0&&<p className="text-xs mt-1.5 text-red-500">Over by {Math.abs(row.gapHrs).toLocaleString()}h — ~{Math.ceil(Math.abs(row.gapHrs)/(WORKING_DAYS_PER_MONTH*HOURS_PER_DAY*(utilDes/100)))} additional designer(s) needed</p>}
                         </div>
                       );
                     })}
@@ -675,9 +685,13 @@ export default function App(){
                 </div>
                 <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl">
                   <p className="text-xs text-gray-400">
-                    <span className="font-medium text-gray-600">Volume source:</span> FM forecast assets (fm.ldb+fm.ppd+fm.lld) — the ground truth for total monthly demand<br/>
-                    <span className="font-medium text-gray-600">Auto/manual split:</span> Volume tab auto-eligible flag determines ratio per division<br/>
-                    <span className="font-medium text-gray-600">Formulas:</span> Master h = auto proj × {mastersPerProj} × {hrsPerMaster}h · QC h = auto assets × {qcMinsPerAsset}min ÷ 60 · Manual h = manual assets ÷ {manualRate}/day × 8h · Supply = {globalHC.des.total} × 21d × 8h × {utilDes}% = {desSupplyHrsPerMonth.toLocaleString()}h/mo
+                    <span className="font-medium text-gray-600">Supply:</span> {totalDesEfte.toFixed(1)} efte × 21d × 8h × {utilDes}% = {desSupplyHrsPerMonth.toLocaleString()}h/mo ·
+                    <span className="font-medium text-gray-600"> efte:</span> availFrac-weighted · ALL-division → ⅓ per division ·
+                    <span className="font-medium text-gray-600"> Volume:</span> FM forecast ·
+                    <span className="font-medium text-gray-600"> Auto proj:</span> fm.divProj × simplePct (once per brief, no ×weeks) ·
+                    <span className="font-medium text-gray-600"> Master h:</span> auto proj × {mastersPerProj} × {hrsPerMaster}h ·
+                    <span className="font-medium text-gray-600"> QC h:</span> auto assets × {qcMinsPerAsset}min÷60 ·
+                    <span className="font-medium text-gray-600"> Manual h:</span> (fm.gt−auto) ÷ {manualRate}×8h
                   </p>
                 </div>
               </Card>
@@ -689,20 +703,25 @@ export default function App(){
         {activeTab==="forecast"&&(
           <div className="space-y-8">
             <div>
-              <SectionHeader number="A" title="Capacity at a Glance" subtitle="Key output numbers — what can the team actually deliver each month?" what="Manual cap = no automation baseline. Apr and Jun figures show how automation raises that ceiling." color="#22C55E"/>
+              <SectionHeader number="A" title="Capacity at a Glance" subtitle="Key output numbers — what can the team actually deliver each month?" color="#22C55E"/>
               <div className="grid grid-cols-4 gap-4">
-                {[{label:"Manual capacity / month",value:manualCap.toLocaleString(),sub:`${manualRate} assets/designer/day`,icon:"✏️"},{label:"Apr capacity (LLD auto)",value:(monthlyCap[3]?.total||0).toLocaleString(),sub:"LLD goes live April",icon:"⚡"},{label:"Jun capacity (all divisions)",value:(monthlyCap[5]?.total||0).toLocaleString(),sub:"All divisions automated",icon:"🤖"},{label:"PM team capacity / month",value:totalTeamPMCap.toLocaleString(),sub:`${projectsPerPM} concurrent/PM`,icon:"👥"}].map(s=>(<div key={s.label} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5"><div className="flex items-start justify-between"><div><p className="text-xs font-medium text-gray-400 mb-1">{s.label}</p><p className="text-2xl font-bold text-gray-900 leading-none">{s.value}</p><p className="text-xs text-gray-400 mt-1.5">{s.sub}</p></div><span className="text-xl">{s.icon}</span></div></div>))}
+                {[
+                  {label:"Manual capacity / month",value:manualCap.toLocaleString(),sub:`${totalDesEfte.toFixed(1)} efte × 21d × ${utilDes}% × ${manualRate}/day`,icon:"✏️"},
+                  {label:"Apr capacity (LLD auto live)",value:(monthlyCap[3]?.total||0).toLocaleString(),sub:`LLD ${Math.round(autoConfig.LLD.simplePct*100)}% automated`,icon:"⚡"},
+                  {label:"Jun capacity (all divisions)",value:(monthlyCap[5]?.total||0).toLocaleString(),sub:"LDB, PPD, LLD all automated",icon:"🤖"},
+                  {label:"PM team capacity / month",value:totalTeamPMCap.toLocaleString(),sub:`${projectsPerPM} concurrent/PM`,icon:"👥"},
+                ].map(s=>(<div key={s.label} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5"><div className="flex items-start justify-between"><div><p className="text-xs font-medium text-gray-400 mb-1">{s.label}</p><p className="text-2xl font-bold text-gray-900 leading-none">{s.value}</p><p className="text-xs text-gray-400 mt-1.5">{s.sub}</p></div><span className="text-xl">{s.icon}</span></div></div>))}
               </div>
             </div>
             <div>
-              <SectionHeader number="B" title="Asset Volume — Forecast vs Capacity" subtitle="Does our capacity line stay above L'Oréal's asset targets every month?" what="Bars = L'Oréal's forecast. Green line = team capacity. When the line is above bars, you're covered." insight={{label:"Watch for",text:"Months where bars exceed the green line — that's a capacity gap."}} color="#22C55E"/>
+              <SectionHeader number="B" title="Asset Volume — Forecast vs Capacity" subtitle="Does our capacity line stay above L'Oréal's asset targets every month?" what="Bars = L'Oréal's forecast. Green line = team capacity. Line above bars = covered." insight={{label:"Watch for",text:"Months where bars exceed the green line — that's a capacity gap."}} color="#22C55E"/>
               <div className="flex items-center gap-3 mb-4 flex-wrap">
                 <div className="flex gap-1 p-1 bg-gray-100 rounded-xl">{[{l:"🤖 With Automation",v:"with"},{l:"Manual Only",v:"without"}].map(o=>(<button key={o.v} onClick={()=>setAutoScenario(o.v)} className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all" style={autoScenario===o.v?{background:"white",color:"#1D1D1F",boxShadow:"0 1px 3px rgba(0,0,0,0.1)"}:{color:"#6B7280"}}>{o.l}</button>))}</div>
                 <span className="text-xs text-gray-400">Division:</span>
                 {["Total","LDB","PPD","LLD"].map(d=>(<button key={d} onClick={()=>setForecastDiv(d)} className="px-3 py-1.5 rounded-full text-xs font-semibold transition-all" style={forecastDiv===d?{background:d==="Total"?"#1D1D1F":DC[d],color:"white"}:{background:"white",color:"#6B7280",border:"1px solid #E5E7EB"}}>{d}</button>))}
               </div>
               <Card>
-                <p className="text-sm text-gray-400 mb-5">{autoScenario==="with"?`LLD auto April · LDB/PPD auto June · QC ${autoQCRate}/day vs manual ${manualRate}/day`:`Manual baseline — ${manualRate} assets/designer/day`}</p>
+                <p className="text-sm text-gray-400 mb-5">{autoScenario==="with"?`LLD auto April · LDB/PPD auto June · QC ${autoQCRate}/day`:`Manual baseline — ${manualRate} assets/designer/day`}</p>
                 <ResponsiveContainer width="100%" height={260}>
                   <ComposedChart data={activeForecastData} margin={{top:0,right:10,left:0,bottom:0}}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false}/>
@@ -719,29 +738,50 @@ export default function App(){
               </Card>
             </div>
             <div>
-              <SectionHeader number="C" title="Coverage by Division" subtitle="Within each division, how does monthly asset capacity compare to L'Oréal's targets?"
-                what="Coverage % = capacity ÷ target. ≥100% = green. 75–99% = amber. <75% = red."
-                insight={{label:"LLD manual-only",text:"Jun and Jul at ~71–75% correctly show red/amber — this is the gap that makes LLD's April go-live critical."}} color="#6366F1"/>
+              <SectionHeader number="C" title="Coverage by Division"
+                subtitle="Within each division, how does monthly asset capacity compare to L'Oréal's targets?"
+                what="Coverage % = division asset capacity ÷ FM target. Capacity uses availFrac-weighted designer efte per division. ALL-division people contribute ⅓ to each."
+                insight={{label:"LLD manual-only",text:"Jun and Jul show 🔴 red (~44%) — team cannot meet targets without automation. This is the case for April go-live."}}
+                color="#6366F1"/>
               <div className="grid grid-cols-3 gap-4">
                 {[{div:"LDB",capKey:"capacityLdb"},{div:"PPD",capKey:"capacityPpd"},{div:"LLD",capKey:"capacityLld"}].map(({div,capKey})=>(
                   <Card key={div} padding="p-0">
-                    <div className="px-5 pt-4 pb-3 border-b border-gray-50 flex items-center justify-between"><div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full" style={{background:DC[div]}}/><span className="text-sm font-semibold text-gray-900">{div}</span></div><Badge color="green" size="xs">⚡ Auto from {autoConfig[div].goLiveMonth}</Badge></div>
+                    <div className="px-5 pt-4 pb-3 border-b border-gray-50 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2.5 h-2.5 rounded-full" style={{background:DC[div]}}/>
+                        <span className="text-sm font-semibold text-gray-900">{div}</span>
+                        <span className="text-xs text-gray-400">{desEfte[div].toFixed(1)} efte</span>
+                      </div>
+                      <Badge color="green" size="xs">⚡ Auto from {autoConfig[div].goLiveMonth}</Badge>
+                    </div>
                     <div className="px-5 py-3 space-y-2.5">
                       {forecastChartData.map(row=>{
-                        const target=row[div.toLowerCase()],cap=row[capKey],pct=Math.round((cap/target)*100);
+                        const target=row[div.toLowerCase()];
+                        const cap=row[capKey];
+                        const pct=Math.round((cap/target)*100);
                         const isAuto=div==="LLD"?row.lldAuto:div==="LDB"?row.ldbAuto:row.ppdAuto;
                         const rg=ragCov(pct);
-                        return(<div key={row.month}><div className="flex items-center justify-between text-xs mb-1"><span className="font-medium text-gray-700 flex items-center gap-1">{row.month}{isAuto&&autoScenario==="with"&&<span className="text-green-400">⚡</span>}</span><span className="text-gray-400">{target.toLocaleString()}</span><span className="font-semibold" style={{color:rg.text}}>{pct}%</span></div><div className="w-full h-1.5 rounded-full bg-gray-100"><div className="h-1.5 rounded-full" style={{width:`${Math.min(pct,100)}%`,background:rg.color}}/></div></div>);
+                        return(
+                          <div key={row.month}>
+                            <div className="flex items-center justify-between text-xs mb-1">
+                              <span className="font-medium text-gray-700 flex items-center gap-1">{row.month}{isAuto&&<span className="text-green-400">⚡</span>}</span>
+                              <span className="text-gray-400">{target.toLocaleString()}</span>
+                              <span className="font-semibold" style={{color:rg.text}}>{pct}%</span>
+                            </div>
+                            <div className="w-full h-1.5 rounded-full bg-gray-100"><div className="h-1.5 rounded-full" style={{width:`${Math.min(pct,100)}%`,background:rg.color}}/></div>
+                          </div>
+                        );
                       })}
+                    </div>
+                    <div className="px-5 py-2 border-t border-gray-50 bg-gray-50 rounded-b-2xl">
+                      <p className="text-xs text-gray-400">Manual: {getDivCapManual(div).toLocaleString()}/mo</p>
                     </div>
                   </Card>
                 ))}
               </div>
             </div>
             <div>
-              <SectionHeader number="D" title="Month-by-Month Actuals Tracker" subtitle="How are we performing against forecast? Enter real delivery numbers as each month closes."
-                what="Amber cells are editable. % shows actual as a proportion of L'Oréal's target."
-                insight={{label:"Action required",text:"Update at the start of each month. Evidence base for QBR and governance conversations."}} color="#F59E0B"/>
+              <SectionHeader number="D" title="Month-by-Month Actuals Tracker" subtitle="Enter real delivery numbers as each month closes." insight={{label:"Update monthly",text:"Evidence base for QBR and governance conversations."}} color="#F59E0B"/>
               <Card padding="p-0">
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs" style={{tableLayout:"fixed"}}>
@@ -752,8 +792,8 @@ export default function App(){
                     </thead>
                     <tbody className="divide-y divide-gray-50">
                       {forecastChartData.map((row,i)=>{const a=actuals[i],cov=Math.round((row.capacityTotal/row.gt)*100),covRg=ragCov(cov),rd=cov>=100?"🟢":cov>=75?"🟡":"🔴",ap2=a.actualAssets?Math.round((a.actualAssets/row.gt)*100):null;return(
-                        <tr key={row.month} className={`hover:bg-gray-50 ${row.anyAuto&&autoScenario==="with"?"bg-green-50/30":""}`}>
-                          <td className="py-3 pl-6 font-semibold text-gray-900">{row.month}{row.anyAuto&&autoScenario==="with"&&<span className="ml-1 text-green-400">⚡</span>}</td>
+                        <tr key={row.month} className={`hover:bg-gray-50 ${row.anyAuto?"bg-green-50/30":""}`}>
+                          <td className="py-3 pl-6 font-semibold text-gray-900">{row.month}{row.anyAuto&&<span className="ml-1 text-green-400">⚡</span>}</td>
                           <td className="py-3 text-center"><div className="font-semibold text-blue-700">{row.gt.toLocaleString()}</div><div className="text-xs font-medium mt-0.5" style={{color:covRg.text}}>{cov}% cap</div></td>
                           <td className="py-3 pr-1"><input type="number" min="0" value={a.actualAssets||""} onChange={e=>updateActualFn(i,"actualAssets",e.target.value)} placeholder="Enter…" className="w-full text-center text-xs font-semibold border border-amber-200 rounded-lg py-1.5 bg-amber-50 text-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-300"/>{ap2!==null&&<div className="text-xs font-medium text-amber-600 text-center mt-0.5">{ap2}%</div>}</td>
                           <td className="py-3 text-center font-medium" style={{color:DC.LDB}}>{row.ldb.toLocaleString()}</td>
@@ -789,43 +829,53 @@ export default function App(){
         {activeTab==="automation"&&(
           <div className="space-y-8">
             <div>
-              <SectionHeader number="A" title="Automation Phases — Capacity by Period" subtitle="LLD goes live April, LDB and PPD in June." what="Compare the three numbers to understand the capacity step-change automation creates." color="#22C55E"/>
+              <SectionHeader number="A" title="Automation Phases — Capacity by Period" subtitle="LLD goes live April, LDB and PPD in June." color="#22C55E"/>
               <div className="flex items-center gap-3 mb-5">
                 <span className="text-sm text-gray-500">Automation</span>
                 <button onClick={()=>setAutoEnabled(v=>!v)} className="relative inline-flex h-7 w-12 items-center rounded-full transition-colors" style={{background:autoEnabled?"#22C55E":"#E5E7EB"}}><span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform ${autoEnabled?"translate-x-6":"translate-x-1"}`}/></button>
                 <span className="text-sm font-medium" style={{color:autoEnabled?"#16A34A":"#9CA3AF"}}>{autoEnabled?"Active":"Disabled"}</span>
               </div>
               <div className="grid grid-cols-3 gap-4">
-                {[{range:"Jan – Mar",sub:"Manual only",cap:monthlyCap[0]?.manualTotal||0,bg:"#F8F8F8",border:"#E5E7EB",textMain:"#1D1D1F",note:`All assets at ${manualRate}/day`},{range:"Apr – May",sub:"LLD automated · LDB & PPD manual",cap:monthlyCap[3]?.total||0,bg:"#ECFDF5",border:"#A7F3D0",textMain:"#065F46",note:`LLD blended: ${Math.round(autoConfig.LLD.simplePct*autoQCRate+(1-autoConfig.LLD.simplePct)*manualRate)}/day`},{range:"Jun – Dec",sub:"All three divisions automated",cap:monthlyCap[5]?.total||0,bg:"#1D1D1F",border:"#1D1D1F",textMain:"white",note:"Maximum capacity"}].map(s=>(<div key={s.range} className="rounded-2xl border p-6" style={{background:s.bg,borderColor:s.border}}><p className="text-xs font-medium mb-1" style={{color:s.textMain,opacity:0.6}}>{s.range}</p><p className="text-sm font-semibold mb-3" style={{color:s.textMain,opacity:0.8}}>{s.sub}</p><p className="text-3xl font-bold mb-1" style={{color:s.textMain}}>{s.cap.toLocaleString()}</p><p className="text-sm mb-3" style={{color:s.textMain,opacity:0.6}}>assets / month</p><p className="text-xs font-medium" style={{color:s.textMain,opacity:0.45}}>{s.note}</p></div>))}
+                {[
+                  {range:"Jan – Mar",sub:"Manual only",cap:monthlyCap[0]?.manualTotal||0,bg:"#F8F8F8",border:"#E5E7EB",textMain:"#1D1D1F",note:`${totalDesEfte.toFixed(1)} efte × 21d × ${manualRate}/day`},
+                  {range:"Apr – May",sub:"LLD automated · LDB & PPD manual",cap:(monthlyCap[3]?.total||0),bg:"#ECFDF5",border:"#A7F3D0",textMain:"#065F46",note:`LLD blended: ${Math.round(autoConfig.LLD.simplePct*autoQCRate+(1-autoConfig.LLD.simplePct)*manualRate)}/day`},
+                  {range:"Jun – Dec",sub:"All three divisions on automation",cap:(monthlyCap[5]?.total||0),bg:"#1D1D1F",border:"#1D1D1F",textMain:"white",note:"Maximum capacity"},
+                ].map(s=>(<div key={s.range} className="rounded-2xl border p-6" style={{background:s.bg,borderColor:s.border}}><p className="text-xs font-medium mb-1" style={{color:s.textMain,opacity:0.6}}>{s.range}</p><p className="text-sm font-semibold mb-3" style={{color:s.textMain,opacity:0.8}}>{s.sub}</p><p className="text-3xl font-bold mb-1" style={{color:s.textMain}}>{s.cap.toLocaleString()}</p><p className="text-sm mb-3" style={{color:s.textMain,opacity:0.6}}>assets / month</p><p className="text-xs font-medium" style={{color:s.textMain,opacity:0.45}}>{s.note}</p></div>))}
               </div>
             </div>
             <div>
-              <SectionHeader number="B" title="QC Rate" subtitle="How fast can designers review auto-generated assets on canvas?" what={`${qcMinsPerAsset} min/asset = ${autoQCRate} assets/day — ${(autoQCRate/manualRate).toFixed(1)}× faster than manual.`} insight={{label:"Calibrate after go-live",text:"Track actual QC time per asset for the first 4 weeks of LLD automation and update the slider."}} color="#8B5CF6"/>
-              <Card><div className="flex items-center justify-between"><div><p className="text-sm text-gray-400">Set via the <strong>QC time</strong> slider in the quick settings bar, or in the Settings tab.</p></div><div className="text-right p-5 rounded-2xl bg-gray-50 ml-6"><p className="text-5xl font-bold text-gray-900">{autoQCRate}</p><p className="text-sm text-gray-500 mt-1">assets / designer / day</p><p className="text-xs text-gray-400 mt-1">{qcMinsPerAsset} min per asset</p></div></div></Card>
+              <SectionHeader number="B" title="QC Rate" subtitle="How fast can designers review auto-generated assets on canvas?" what={`${qcMinsPerAsset} min/asset = ${autoQCRate} assets/day — ${(autoQCRate/manualRate).toFixed(1)}× faster than manual.`} insight={{label:"Calibrate after go-live",text:"Track actual QC time for the first 4 weeks and update the slider."}} color="#8B5CF6"/>
+              <Card><div className="flex items-center justify-between"><div><p className="text-sm text-gray-400">Set via the <strong>QC time</strong> slider above, or on the Settings tab.</p></div><div className="text-right p-5 rounded-2xl bg-gray-50 ml-6"><p className="text-5xl font-bold text-gray-900">{autoQCRate}</p><p className="text-sm text-gray-500 mt-1">assets / designer / day</p><p className="text-xs text-gray-400 mt-1">{qcMinsPerAsset} min per asset</p></div></div></Card>
             </div>
             <div>
-              <SectionHeader number="C" title="Division Configuration" subtitle="Set the go-live month and Simple% for each division." what="Go-live = when automation activates. Simple % = proportion of work that is automation-eligible." color="#1D1D1F"/>
+              <SectionHeader number="C" title="Division Configuration"
+                subtitle="Set the go-live month and Simple% for each division."
+                what="Simple % is applied to FM forecast assets to determine how many are automated. Auto projects = fm.divProj × simplePct (used for master setup hours — once per project brief, not per week)."
+                insight={{label:"Simple % drives",text:"auto assets = fm.div × simplePct. Master setup = auto projects × masters/proj × hrs/master."}}
+                color="#1D1D1F"/>
               <div className="grid grid-cols-3 gap-4">
                 {DIVS.map(div=>{const cfg=autoConfig[div],br=Math.round(cfg.simplePct*autoQCRate+(1-cfg.simplePct)*manualRate),uplift=Math.round((br/manualRate-1)*100);return(
                   <Card key={div}>
-                    <div className="flex items-center justify-between mb-5"><div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full" style={{background:DC[div]}}/><span className="text-base font-semibold text-gray-900">{div}</span></div>{cfg.goLiveMonth!=="Off"&&<Badge color={div==="LDB"?"amber":div==="PPD"?"purple":"blue"} size="xs">Go-live: {cfg.goLiveMonth}</Badge>}</div>
+                    <div className="flex items-center justify-between mb-5"><div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full" style={{background:DC[div]}}/><span className="text-base font-semibold text-gray-900">{div}</span><span className="text-xs text-gray-400">{desEfte[div].toFixed(1)} efte</span></div>{cfg.goLiveMonth!=="Off"&&<Badge color={div==="LDB"?"amber":div==="PPD"?"purple":"blue"} size="xs">Go-live: {cfg.goLiveMonth}</Badge>}</div>
                     <div className="mb-4"><p className="text-xs font-medium text-gray-500 mb-2">Go-Live Month</p><div className="flex gap-1 flex-wrap">{GO_LIVE_OPTIONS.map(m=>(<button key={m} onClick={()=>updateAuto(div,"goLiveMonth",m)} className="px-2 py-1 text-xs rounded-lg font-medium transition-all" style={cfg.goLiveMonth===m?{background:DC[div],color:"white"}:{background:"#F3F4F6",color:"#6B7280"}}>{m}</button>))}</div></div>
-                    <div className="mb-5"><div className="flex justify-between mb-1.5"><p className="text-xs font-medium text-gray-500">Simple %</p><span className="text-sm font-bold" style={{color:DC[div]}}>{Math.round(cfg.simplePct*100)}%</span></div><input type="range" min={0} max={1} step={0.05} value={cfg.simplePct} onChange={e=>updateAuto(div,"simplePct",+e.target.value)} className="w-full h-1.5 rounded-full" style={{accentColor:DC[div]}}/></div>
+                    <div className="mb-2"><div className="flex justify-between mb-1.5"><p className="text-xs font-medium text-gray-500">Simple % — proportion of {div} FM assets automated</p><span className="text-sm font-bold" style={{color:DC[div]}}>{Math.round(cfg.simplePct*100)}%</span></div><input type="range" min={0} max={1} step={0.05} value={cfg.simplePct} onChange={e=>updateAuto(div,"simplePct",+e.target.value)} className="w-full h-1.5 rounded-full" style={{accentColor:DC[div]}}/></div>
+                    <p className="text-xs text-gray-400 mb-4">Auto assets = fm.{div.toLowerCase()} × {Math.round(cfg.simplePct*100)}%. Auto proj = fm.{div.toLowerCase()}Proj × {Math.round(cfg.simplePct*100)}%.</p>
                     <div className="p-4 rounded-xl text-center" style={{background:DC[div]+"10"}}><p className="text-xs font-medium mb-1" style={{color:DC[div]}}>Blended rate when live</p><p className="text-2xl font-bold" style={{color:DC[div]}}>{br}</p><p className="text-xs text-gray-500 mt-0.5">assets / designer / day</p><p className="text-xs font-semibold text-green-600 mt-1.5">+{uplift}% vs manual</p></div>
                   </Card>
                 );})}
               </div>
             </div>
             <div>
-              <SectionHeader number="D" title="Project Type Eligibility" subtitle="Which brief types go through automation, and which are authored manually?" what="Auto-eligible types use the QC rate once go-live is active. Toggling eligibility here updates the auto/manual split ratio used in the designer hours model." color="#10B981"/>
+              <SectionHeader number="D" title="Project Type Eligibility — Reference Only" subtitle="These flags help inform what Simple% to set. They do not directly drive the hours model." color="#10B981"/>
               <Card>
-                <div className="grid grid-cols-3 gap-3">
-                  {mix.map(m=>{const pt=PT_BASE.find(p=>p.id===m.id);if(!pt)return null;return(<div key={m.id} className="flex items-center justify-between p-3.5 rounded-xl border transition-all" style={m.autoEligible?{background:"#F0FDF4",borderColor:"#BBF7D0"}:{background:"#F9FAFB",borderColor:"#E5E7EB"}}><div className="flex items-center gap-2.5 flex-1 min-w-0"><div className="w-2 h-2 rounded-full flex-shrink-0" style={{background:pt.color}}/><span className="text-xs font-medium text-gray-800 truncate">{pt.label}</span></div><div className="flex items-center gap-2 ml-2 flex-shrink-0"><span className={`text-xs font-medium ${m.autoEligible?"text-green-700":"text-gray-400"}`}>{m.autoEligible?"Auto":"Manual"}</span><button onClick={()=>toggleAuto(m.id)} className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors" style={{background:m.autoEligible?"#22C55E":"#D1D5DB"}}><span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform ${m.autoEligible?"translate-x-4":"translate-x-0.5"}`}/></button></div></div>);})}
+                <Insight type="info">The designer hours model uses Simple% (Division Configuration above) applied to FM forecast assets. These toggles are a planning reference to help you calibrate Simple%.</Insight>
+                <div className="grid grid-cols-3 gap-3 mt-4">
+                  {mix.map(m=>{const pt=PT_BASE.find(p=>p.id===m.id);if(!pt)return null;return(<div key={m.id} className="flex items-center justify-between p-3.5 rounded-xl border transition-all" style={m.autoEligible?{background:"#F0FDF4",borderColor:"#BBF7D0"}:{background:"#F9FAFB",borderColor:"#E5E7EB"}}><div className="flex items-center gap-2.5 flex-1 min-w-0"><div className="w-2 h-2 rounded-full flex-shrink-0" style={{background:pt.color}}/><span className="text-xs font-medium text-gray-800 truncate">{pt.label}</span></div><div className="flex items-center gap-2 ml-2 flex-shrink-0"><span className={`text-xs font-medium ${m.autoEligible?"text-green-700":"text-gray-400"}`}>{m.autoEligible?"⚡ Auto":"Manual"}</span><button onClick={()=>toggleAuto(m.id)} className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors" style={{background:m.autoEligible?"#22C55E":"#D1D5DB"}}><span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform ${m.autoEligible?"translate-x-4":"translate-x-0.5"}`}/></button></div></div>);})}
                 </div>
               </Card>
             </div>
             <div>
-              <SectionHeader number="E" title="Capacity Step-Change Chart" subtitle="How automation transforms what the team can deliver across 2026." what="Grey dashed = manual baseline. Green solid = with automation. Green should always be above the purple bars." color="#22C55E"/>
+              <SectionHeader number="E" title="Capacity Step-Change Chart" subtitle="How automation transforms deliverable volume across 2026." color="#22C55E"/>
               <Card>
                 <ResponsiveContainer width="100%" height={260}>
                   <ComposedChart data={forecastChartData} margin={{top:0,right:10,left:0,bottom:0}}>
@@ -848,42 +898,39 @@ export default function App(){
         {activeTab==="volume"&&(
           <div className="space-y-8">
             <div>
-              <SectionHeader number="A" title="Project Intake by Type & Division" subtitle="What is the expected mix of project types, and how many assets does each brief contain?"
-                what="The auto-eligible flag on each row controls the auto/manual split ratio used in the designer hours model on the Capacity tab. The FM forecast provides the total asset volume — the Volume tab determines the proportion that goes through automation."
-                insight={{label:"What this drives",text:"Toggling a project type between Auto and Manual changes the ratio of QC hours vs manual production hours on the Capacity tab. The total hours demanded stays aligned to the FM forecast volume."}} color="#6366F1"/>
+              <SectionHeader number="A" title="Project Intake by Type & Division" subtitle="Expected project mix — planning reference."
+                what="Use the auto-eligible flags to inform what Simple% to set on the Automation tab. The designer hours model uses Simple% × FM forecast assets — not these project counts directly."
+                insight={{label:"How it connects",text:"If ~70% of LLD assets by volume are automation-eligible, set LLD Simple% to 70% on the Automation tab."}} color="#6366F1"/>
               <div className="grid grid-cols-3 gap-4 mb-6">
                 {DIVS.map(div=>{const da=mixAnalysis.find(x=>x.div===div)||{tProj:0,tAssets:0};return(<Card key={div}><div className="flex items-center gap-2 mb-2"><div className="w-2.5 h-2.5 rounded-full" style={{background:DC[div]}}/><span className="text-sm font-semibold text-gray-900">{div}</span></div><p className="text-3xl font-bold text-gray-900">{da.tProj}</p><p className="text-sm text-gray-400 mt-1">projects · <span className="font-medium text-gray-600">{da.tAssets.toLocaleString()} total assets</span></p></Card>);})}
               </div>
               <Card padding="p-0">
-                <div className="px-6 pt-5 pb-4 border-b border-gray-50">
-                  <p className="text-sm font-semibold text-gray-900">How to use this table</p>
-                  <p className="text-xs text-gray-400 mt-1">Use + / − to adjust project counts. Type into assets/brief to set average volume. ⚡ green rows are automation-eligible — the auto/manual ratio for the Capacity tab is derived from the proportion of total assets in ⚡ rows vs non-⚡ rows per division.</p>
-                </div>
+                <div className="px-6 pt-5 pb-4 border-b border-gray-50"><p className="text-sm font-semibold text-gray-900">Planning reference table</p><p className="text-xs text-gray-400 mt-1">Use + / − to adjust project counts. The auto-eligible flag is a reference indicator — use the proportion of auto-eligible assets to calibrate Simple% on the Automation tab.</p></div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
-                    <thead><tr className="bg-gray-50 text-gray-400 font-medium uppercase tracking-wide text-xs"><th className="px-6 py-3 text-left">Project Type</th><th className="px-3 py-3 text-center">Pipeline</th><th className="px-3 py-3 text-center" style={{color:DC.LDB}}>LDB proj</th><th className="px-3 py-3 text-center" style={{color:DC.LDB}}>LDB assets/brief</th><th className="px-3 py-3 text-center" style={{color:DC.PPD}}>PPD proj</th><th className="px-3 py-3 text-center" style={{color:DC.PPD}}>PPD assets/brief</th><th className="px-3 py-3 text-center" style={{color:DC.LLD}}>LLD proj</th><th className="px-3 py-3 text-center" style={{color:DC.LLD}}>LLD assets/brief</th><th className="px-3 py-3 text-center">Total</th><th className="px-3 py-3 text-center">Assets</th></tr></thead>
+                    <thead><tr className="bg-gray-50 text-gray-400 font-medium uppercase tracking-wide text-xs"><th className="px-6 py-3 text-left">Project Type</th><th className="px-3 py-3 text-center">Flag</th><th className="px-3 py-3 text-center" style={{color:DC.LDB}}>LDB proj</th><th className="px-3 py-3 text-center" style={{color:DC.LDB}}>assets/brief</th><th className="px-3 py-3 text-center" style={{color:DC.PPD}}>PPD proj</th><th className="px-3 py-3 text-center" style={{color:DC.PPD}}>assets/brief</th><th className="px-3 py-3 text-center" style={{color:DC.LLD}}>LLD proj</th><th className="px-3 py-3 text-center" style={{color:DC.LLD}}>assets/brief</th><th className="px-3 py-3 text-center">Total</th><th className="px-3 py-3 text-center">Assets</th></tr></thead>
                     <tbody className="divide-y divide-gray-50">
                       {mix.map(m=>{const pt=PT_BASE.find(p=>p.id===m.id),rowTot=m.LDB+m.PPD+m.LLD,rowAssets=(m.assetsLDB*m.LDB)+(m.assetsPPD*m.PPD)+(m.assetsLLD*m.LLD);return(
                         <tr key={m.id} className={`hover:bg-gray-50 transition-colors ${m.autoEligible?"bg-green-50/30":""}`}>
                           <td className="px-6 py-3"><div className="flex items-center gap-2.5"><div className="w-2 h-2 rounded-full flex-shrink-0" style={{background:pt?.color||"#666"}}/><span className="font-medium text-gray-800">{pt?.label||m.id}</span></div></td>
                           <td className="px-3 py-3 text-center"><span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${m.autoEligible?"bg-green-100 text-green-700":"bg-gray-100 text-gray-500"}`}>{m.autoEligible?"⚡ Auto":"Manual"}</span></td>
                           <td className="px-3 py-3 text-center"><div className="flex items-center justify-center gap-1"><button onClick={()=>updateMixCount(m.id,"LDB",m.LDB-1)} className="w-5 h-5 rounded-lg bg-gray-100 text-gray-600 font-bold hover:bg-gray-200">−</button><span className="w-6 text-center font-bold" style={{color:DC.LDB}}>{m.LDB}</span><button onClick={()=>updateMixCount(m.id,"LDB",m.LDB+1)} className="w-5 h-5 rounded-lg bg-gray-100 text-gray-600 font-bold hover:bg-gray-200">+</button></div></td>
-                          <td className="px-3 py-3 text-center"><input type="number" min="1" value={m.assetsLDB} onChange={e=>updateMixAssets(m.id,"assetsLDB",+e.target.value)} className="w-16 text-center text-xs font-semibold border rounded-lg px-1 py-1.5 focus:outline-none" style={{borderColor:DC.LDB+"40",color:DC.LDB}}/><p className="text-xs text-gray-400 mt-0.5">{(m.assetsLDB*m.LDB).toLocaleString()}</p></td>
+                          <td className="px-3 py-3 text-center"><input type="number" min="1" value={m.assetsLDB} onChange={e=>updateMixAssets(m.id,"assetsLDB",+e.target.value)} className="w-16 text-center text-xs font-semibold border rounded-lg px-1 py-1.5 focus:outline-none" style={{borderColor:DC.LDB+"40",color:DC.LDB}}/></td>
                           <td className="px-3 py-3 text-center"><div className="flex items-center justify-center gap-1"><button onClick={()=>updateMixCount(m.id,"PPD",m.PPD-1)} className="w-5 h-5 rounded-lg bg-gray-100 text-gray-600 font-bold hover:bg-gray-200">−</button><span className="w-6 text-center font-bold" style={{color:DC.PPD}}>{m.PPD}</span><button onClick={()=>updateMixCount(m.id,"PPD",m.PPD+1)} className="w-5 h-5 rounded-lg bg-gray-100 text-gray-600 font-bold hover:bg-gray-200">+</button></div></td>
-                          <td className="px-3 py-3 text-center"><input type="number" min="1" value={m.assetsPPD} onChange={e=>updateMixAssets(m.id,"assetsPPD",+e.target.value)} className="w-16 text-center text-xs font-semibold border rounded-lg px-1 py-1.5 focus:outline-none" style={{borderColor:DC.PPD+"40",color:DC.PPD}}/><p className="text-xs text-gray-400 mt-0.5">{(m.assetsPPD*m.PPD).toLocaleString()}</p></td>
+                          <td className="px-3 py-3 text-center"><input type="number" min="1" value={m.assetsPPD} onChange={e=>updateMixAssets(m.id,"assetsPPD",+e.target.value)} className="w-16 text-center text-xs font-semibold border rounded-lg px-1 py-1.5 focus:outline-none" style={{borderColor:DC.PPD+"40",color:DC.PPD}}/></td>
                           <td className="px-3 py-3 text-center"><div className="flex items-center justify-center gap-1"><button onClick={()=>updateMixCount(m.id,"LLD",m.LLD-1)} className="w-5 h-5 rounded-lg bg-gray-100 text-gray-600 font-bold hover:bg-gray-200">−</button><span className="w-6 text-center font-bold" style={{color:DC.LLD}}>{m.LLD}</span><button onClick={()=>updateMixCount(m.id,"LLD",m.LLD+1)} className="w-5 h-5 rounded-lg bg-gray-100 text-gray-600 font-bold hover:bg-gray-200">+</button></div></td>
-                          <td className="px-3 py-3 text-center"><input type="number" min="1" value={m.assetsLLD} onChange={e=>updateMixAssets(m.id,"assetsLLD",+e.target.value)} className="w-16 text-center text-xs font-semibold border rounded-lg px-1 py-1.5 focus:outline-none" style={{borderColor:DC.LLD+"40",color:DC.LLD}}/><p className="text-xs text-gray-400 mt-0.5">{(m.assetsLLD*m.LLD).toLocaleString()}</p></td>
+                          <td className="px-3 py-3 text-center"><input type="number" min="1" value={m.assetsLLD} onChange={e=>updateMixAssets(m.id,"assetsLLD",+e.target.value)} className="w-16 text-center text-xs font-semibold border rounded-lg px-1 py-1.5 focus:outline-none" style={{borderColor:DC.LLD+"40",color:DC.LLD}}/></td>
                           <td className="px-3 py-3 text-center font-bold text-gray-900">{rowTot}</td>
                           <td className="px-6 py-3 text-center font-semibold text-gray-600">{rowAssets.toLocaleString()}</td>
                         </tr>
                       );})}
                       <tr className="border-t-2 border-gray-200 bg-gray-50 font-semibold text-xs">
-                        <td colSpan={2} className="px-6 py-3 text-gray-700">TOTAL</td>
+                        <td colSpan={2} className="px-6 py-3">TOTAL</td>
                         <td className="px-3 py-3 text-center font-bold" style={{color:DC.LDB}}>{mix.reduce((s,m)=>s+m.LDB,0)}</td><td className="px-3 py-3 text-center text-gray-400">—</td>
                         <td className="px-3 py-3 text-center font-bold" style={{color:DC.PPD}}>{mix.reduce((s,m)=>s+m.PPD,0)}</td><td className="px-3 py-3 text-center text-gray-400">—</td>
                         <td className="px-3 py-3 text-center font-bold" style={{color:DC.LLD}}>{mix.reduce((s,m)=>s+m.LLD,0)}</td><td className="px-3 py-3 text-center text-gray-400">—</td>
-                        <td className="px-3 py-3 text-center text-gray-900">{combined.tProj}</td>
-                        <td className="px-6 py-3 text-center text-gray-700">{combined.tAssets.toLocaleString()}</td>
+                        <td className="px-3 py-3 text-center">{combined.tProj}</td>
+                        <td className="px-6 py-3 text-center">{combined.tAssets.toLocaleString()}</td>
                       </tr>
                     </tbody>
                   </table>
@@ -896,7 +943,7 @@ export default function App(){
         {/* ══ SLA CALC ══ */}
         {activeTab==="sla"&&(
           <div className="space-y-6">
-            <SectionHeader number="" title="How Long Will This Project Take?" subtitle="Estimate the end-to-end SLA for any single brief." what="Each project type goes through a defined set of stages. This calculator applies the duration for each active stage and sums them into a total SLA in calendar days." insight={{label:"Customise it",text:"The ± controls override any stage duration. Overrides are saved per project type."}} color="#8B5CF6"/>
+            <SectionHeader number="" title="How Long Will This Project Take?" subtitle="Estimate the end-to-end SLA for any single brief." what="Each project type goes through a defined set of stages. This calculator applies the duration for each active stage and sums into a total SLA." insight={{label:"Customise it",text:"The ± controls override any stage duration. Overrides are saved per project type."}} color="#8B5CF6"/>
             <Card>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                 <div><p className="text-xs font-medium text-gray-500 mb-2">Complexity</p><div className="flex gap-1.5 flex-wrap">{["Simple","Complex","Creation","Bespoke"].map(c=>(<button key={c} onClick={()=>setCalcCplx(c)} className="px-3 py-1.5 rounded-xl text-xs font-semibold transition-all" style={calcCplx===c?{background:"#8B5CF6",color:"white"}:{background:"#F3F4F6",color:"#6B7280"}}>{c}</button>))}</div></div>
@@ -953,22 +1000,27 @@ export default function App(){
         {/* ══ TEAM ══ */}
         {activeTab==="team"&&(
           <div className="space-y-6">
-            <SectionHeader number="" title="Live Team Roster" subtitle="The single source of truth for who is on the team, what division they're in, and when they're available."
-              what="Every PM and Integrated Designer listed here contributes to the capacity calculations. Set start dates for joiners and exit dates for leavers — capacity is pro-rated automatically."
-              insight={{label:"Keep current",text:"All capacity numbers derive from this roster. Out-of-date headcount = inaccurate model = unreliable governance conversations."}} color="#1D1D1F"/>
-            {pendingStarters.length>0&&(<div className="p-5 rounded-2xl border border-amber-200 bg-amber-50"><p className="text-sm font-semibold text-amber-800 mb-1">⏳ {pendingStarters.length} Pending Starter{pendingStarters.length>1?"s":""}</p><p className="text-xs text-amber-600 mb-3">Not yet active — capacity is pro-rated from their start date.</p><div className="space-y-2">{pendingStarters.map(p=>{const f=availFrac(p.startDate,p.endDate,WD);return(<div key={p.id} className="flex items-center gap-3 text-sm"><span className="font-medium text-amber-900">{p.name}</span><Badge color="gray" size="xs">{p.division} · {p.role}</Badge><span className="text-amber-600 text-xs">Starts {startLbl(p.startDate)}</span><span className="ml-auto text-xs font-semibold text-green-600">{Math.round(f*100)}% this period</span></div>);})}</div></div>)}
-            {pendingLeavers.length>0&&(<div className="p-5 rounded-2xl border border-red-200 bg-red-50"><p className="text-sm font-semibold text-red-800 mb-1">🔴 {pendingLeavers.length} Planned Leaver{pendingLeavers.length>1?"s":""}</p><p className="text-xs text-red-600 mb-3">Exit dates set — the capacity model already accounts for this reduction.</p><div className="space-y-2">{pendingLeavers.map(p=>{const f=availFrac(p.startDate,p.endDate,WD);return(<div key={p.id} className="flex items-center gap-3 text-sm"><span className="font-medium text-red-900">{p.name}</span><Badge color="gray" size="xs">{p.division} · {p.role}</Badge><span className="text-red-600 text-xs">Exits {endLbl(p.endDate)}</span><span className="ml-auto text-xs font-semibold text-amber-600">{Math.round(f*100)}% remaining</span></div>);})}</div></div>)}
+            <SectionHeader number="" title="Live Team Roster" subtitle="The single source of truth for who is on the team and when they're available."
+              what="Every designer and PM here contributes to capacity. Start/end dates reduce each person's availFrac proportionally. division='ALL' distributes capacity equally across LDB, PPD and LLD."
+              insight={{label:"Keep current",text:"Start/end dates affect both designer supply and PM capacity. Set them accurately for every person."}} color="#1D1D1F"/>
+            {pendingStarters.length>0&&(<div className="p-5 rounded-2xl border border-amber-200 bg-amber-50"><p className="text-sm font-semibold text-amber-800 mb-1">⏳ {pendingStarters.length} Pending Starter{pendingStarters.length>1?"s":""}</p><p className="text-xs text-amber-600 mb-3">Not yet active — their availFrac is reduced until their start date, reducing their capacity contribution.</p><div className="space-y-2">{pendingStarters.map(p=>{const f=availFrac(p.startDate,p.endDate,WD);return(<div key={p.id} className="flex items-center gap-3 text-sm"><span className="font-medium text-amber-900">{p.name}</span><Badge color="gray" size="xs">{p.division} · {p.role}</Badge><span className="text-amber-600 text-xs">Starts {startLbl(p.startDate)}</span><span className="ml-auto text-xs font-semibold text-amber-600">{Math.round(f*100)}% this period</span></div>);})}</div></div>)}
+            {pendingLeavers.length>0&&(<div className="p-5 rounded-2xl border border-red-200 bg-red-50"><p className="text-sm font-semibold text-red-800 mb-1">🔴 {pendingLeavers.length} Planned Leaver{pendingLeavers.length>1?"s":""}</p><p className="text-xs text-red-600 mb-3">Exit dates set — their availFrac reduces to zero after their exit date.</p><div className="space-y-2">{pendingLeavers.map(p=>{const f=availFrac(p.startDate,p.endDate,WD);return(<div key={p.id} className="flex items-center gap-3 text-sm"><span className="font-medium text-red-900">{p.name}</span><Badge color="gray" size="xs">{p.division} · {p.role}</Badge><span className="text-red-600 text-xs">Exits {endLbl(p.endDate)}</span><span className="ml-auto text-xs font-semibold text-red-600">{Math.round(f*100)}% remaining</span></div>);})}</div></div>)}
             <div className="grid grid-cols-4 gap-4">
-              <Card><p className="text-xs font-medium text-gray-400 mb-2">Total Active</p><p className="text-3xl font-bold text-gray-900">{capacityRoster.length}</p><p className="text-xs text-gray-400 mt-1">{ftePM+fteDes} FTE · {flPM+flDes} Freelance</p></Card>
-              {DIVS.map(div=>{const hc=poolsByDiv[div];return(<Card key={div}><div className="flex items-center gap-1.5 mb-3"><div className="w-2 h-2 rounded-full" style={{background:DC[div]}}/><span className="text-xs font-semibold text-gray-700">{div}</span></div><div className="grid grid-cols-2 gap-2"><div><p className="text-xs text-gray-400">PMs</p><p className="text-xl font-bold text-gray-900">{hc.pm.total}</p><p className="text-xs text-gray-400">{hc.pm.fte}F · {hc.pm.fl}FL</p></div><div><p className="text-xs text-gray-400">Designers</p><p className="text-xl font-bold text-gray-900">{hc.des.total}</p><p className="text-xs text-gray-400">{hc.des.fte}F · {hc.des.fl}FL</p></div></div></Card>);})}
+              <Card>
+                <p className="text-xs font-medium text-gray-400 mb-2">Total Active</p>
+                <p className="text-3xl font-bold text-gray-900">{capacityRoster.length}</p>
+                <p className="text-xs text-gray-400 mt-1">{ftePM+fteDes} FTE · {flPM+flDes} Freelance</p>
+                <p className="text-xs text-gray-400 mt-0.5">{totalDesEfte.toFixed(1)} des efte · {totalPMEfte.toFixed(1)} PM efte</p>
+              </Card>
+              {DIVS.map(div=>{return(<Card key={div}><div className="flex items-center gap-1.5 mb-3"><div className="w-2 h-2 rounded-full" style={{background:DC[div]}}/><span className="text-xs font-semibold text-gray-700">{div}</span></div><div className="grid grid-cols-2 gap-2"><div><p className="text-xs text-gray-400">PMs</p><p className="text-xl font-bold text-gray-900">{poolsByDiv[div].pm.total}</p><p className="text-xs text-gray-400">{poolsByDiv[div].pm.fte}F · {poolsByDiv[div].pm.fl}FL</p></div><div><p className="text-xs text-gray-400">Designers</p><p className="text-xl font-bold text-gray-900">{poolsByDiv[div].des.total}</p><p className="text-xs text-gray-400">{poolsByDiv[div].des.fte}F · {poolsByDiv[div].des.fl}FL</p><p className="text-xs text-gray-400">{desEfte[div].toFixed(1)} efte</p></div></div></Card>);})}
             </div>
             {showAdd&&(
               <Card>
                 <div className="flex items-center justify-between mb-2"><h2 className="text-base font-semibold text-gray-900">Add New Team Member</h2><button onClick={()=>setShowAdd(false)} className="text-gray-400 hover:text-gray-600 text-xl">×</button></div>
-                <p className="text-xs text-gray-400 mb-5">Set start date for anyone not yet active. Set exit date if known.</p>
+                <p className="text-xs text-gray-400 mb-5">Set start/end dates accurately — they reduce this person's capacity contribution via availFrac. division='ALL' splits their capacity equally across LDB, PPD and LLD.</p>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
                   <div className="md:col-span-3"><label className="text-xs font-medium text-gray-500 block mb-1.5">Full Name</label><input value={newP.name} onChange={e=>setNewP(p=>({...p,name:e.target.value}))} placeholder="e.g. Jane Smith" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"/></div>
-                  {[{label:"Role",val:newP.role,set:v=>setNewP(p=>({...p,role:v})),opts:ROLE_OPTIONS},{label:"Function",val:newP.family,set:v=>setNewP(p=>({...p,family:v})),opts:FAMILY_OPTIONS},{label:"Contract",val:newP.type,set:v=>setNewP(p=>({...p,type:v})),opts:["FTE","Freelance"]},{label:"Division",val:newP.division,set:v=>setNewP(p=>({...p,division:v})),opts:["LDB","PPD","LLD","ALL"]},{label:"Status",val:newP.status,set:v=>setNewP(p=>({...p,status:v})),opts:STATUS_OPTIONS}].map(f=>(<div key={f.label}><label className="text-xs font-medium text-gray-500 block mb-1.5">{f.label}</label><select value={f.val} onChange={e=>f.set(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-gray-300">{f.opts.map(o=><option key={o}>{o}</option>)}</select></div>))}
+                  {[{label:"Role",val:newP.role,set:v=>setNewP(p=>({...p,role:v})),opts:ROLE_OPTIONS},{label:"Function",val:newP.family,set:v=>setNewP(p=>({...p,family:v})),opts:FAMILY_OPTIONS},{label:"Contract",val:newP.type,set:v=>setNewP(p=>({...p,type:v})),opts:["FTE","Freelance"]},{label:"Division",val:newP.division,set:v=>setNewP(p=>({...p,division:v})),opts:["LDB","PPD","LLD","ALL"]},{label:"Status",val:newP.status,set:v=>setNewP(p=>({...p,status:v})),opts:STATUS_OPTIONS}].map(f=>(<div key={f.label}><label className="text-xs font-medium text-gray-500 block mb-1.5">{f.label}{f.label==="Division"&&<span className="text-gray-400 ml-1">(ALL = splits ⅓ across each)</span>}</label><select value={f.val} onChange={e=>f.set(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-gray-300">{f.opts.map(o=><option key={o}>{o}</option>)}</select></div>))}
                   <div><label className="text-xs font-medium text-gray-500 block mb-1.5">Start Date</label><select value={newP.startDate} onChange={e=>setNewP(p=>({...p,startDate:e.target.value}))} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none">{WEEK_OPTIONS.map(w=>(<option key={w.value} value={w.value}>{w.label}</option>))}</select></div>
                   <div><label className="text-xs font-medium text-gray-500 block mb-1.5">Exit Date (if known)</label><select value={newP.endDate} onChange={e=>setNewP(p=>({...p,endDate:e.target.value}))} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none"><option value="never">No planned exit</option>{WEEK_OPTIONS.filter(w=>w.value!=="now").map(w=>(<option key={w.value} value={w.value}>{w.label}</option>))}</select></div>
                 </div>
@@ -984,7 +1036,7 @@ export default function App(){
               <button onClick={()=>setShowAdd(true)} className="px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{background:"#1D1D1F"}}>+ Add Person</button>
             </div>
             <Card padding="p-0">
-              <div className="px-6 py-3 border-b border-gray-50 bg-gray-50"><p className="text-xs text-gray-400"><span className="font-medium text-gray-600">Cap %</span> = proportion of the {period.label} planning period this person contributes, based on start and exit dates.</p></div>
+              <div className="px-6 py-3 border-b border-gray-50 bg-gray-50"><p className="text-xs text-gray-400"><span className="font-medium text-gray-600">Cap %</span> = availFrac for this planning period. Start/end dates reduce this. Applies to both designers (supply) and PMs (PM capacity). ALL-division people show their overall fraction — their efte is split ⅓ across each division.</p></div>
               <div className="overflow-x-auto max-h-96 overflow-y-auto">
                 <table className="w-full text-sm">
                   <thead className="sticky top-0 z-10"><tr className="bg-gray-50 text-gray-400 font-medium uppercase tracking-wide text-xs border-b border-gray-100"><th className="px-6 py-3 text-left">Name</th><th className="px-4 py-3 text-left">Role</th><th className="px-4 py-3 text-center">Type</th><th className="px-4 py-3 text-center">Division</th><th className="px-4 py-3 text-center">Starts</th><th className="px-4 py-3 text-center">Exits</th><th className="px-4 py-3 text-center">Cap %</th><th className="px-4 py-3 text-center">Status</th><th className="px-6 py-3 text-center">Actions</th></tr></thead>
@@ -998,7 +1050,7 @@ export default function App(){
                           <td className="px-6 py-3"><span className={`font-medium ${removed?"line-through text-gray-400":"text-gray-900"}`}>{isEd?<input value={editData.name||""} onChange={e=>setEditData(d=>({...d,name:e.target.value}))} className="border border-blue-300 rounded-lg px-2 py-1 text-sm w-full"/>:p.name}</span></td>
                           <td className="px-4 py-3 text-gray-500 text-xs">{isEd?<select value={editData.role||""} onChange={e=>setEditData(d=>({...d,role:e.target.value}))} className="border border-blue-300 rounded-lg px-1 py-1 text-xs w-full bg-white">{ROLE_OPTIONS.map(r=><option key={r}>{r}</option>)}</select>:p.role}</td>
                           <td className="px-4 py-3 text-center">{isEd?<select value={editData.type||""} onChange={e=>setEditData(d=>({...d,type:e.target.value}))} className="border border-blue-300 rounded-lg px-1 py-1 text-xs bg-white"><option>FTE</option><option>Freelance</option></select>:<Badge color={p.type==="FTE"?"blue":"purple"} size="xs">{p.type}</Badge>}</td>
-                          <td className="px-4 py-3 text-center">{isEd?<select value={editData.division||""} onChange={e=>setEditData(d=>({...d,division:e.target.value}))} className="border border-blue-300 rounded-lg px-1 py-1 text-xs bg-white">{["LDB","PPD","LLD","ALL"].map(d=><option key={d}>{d}</option>)}</select>:<span className="inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full" style={{background:(DC[p.division]||"#6b7280")+"15",color:DC[p.division]||"#6b7280"}}>{p.division}</span>}</td>
+                          <td className="px-4 py-3 text-center">{isEd?<select value={editData.division||""} onChange={e=>setEditData(d=>({...d,division:e.target.value}))} className="border border-blue-300 rounded-lg px-1 py-1 text-xs bg-white">{["LDB","PPD","LLD","ALL"].map(d=><option key={d}>{d}</option>)}</select>:<span className="inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full" style={{background:(p.division==="ALL"?"#6b7280":(DC[p.division]||"#6b7280"))+"15",color:p.division==="ALL"?"#6b7280":(DC[p.division]||"#6b7280")}}>{p.division}{p.division==="ALL"&&<span className="ml-0.5 opacity-60">⅓</span>}</span>}</td>
                           <td className="px-4 py-3 text-center">{isEd?<select value={editData.startDate||"now"} onChange={e=>setEditData(d=>({...d,startDate:e.target.value}))} className="border border-blue-300 rounded-lg px-1 py-1 text-xs bg-white w-28">{WEEK_OPTIONS.map(w=>(<option key={w.value} value={w.value}>{w.label}</option>))}</select>:<span className={`text-xs font-medium px-2 py-1 rounded-lg ${isPending?"bg-amber-100 text-amber-700":"text-gray-400"}`}>{isPending?"⏳ ":""}{startLbl(p.startDate)}</span>}</td>
                           <td className="px-4 py-3 text-center">{isEd?<select value={editData.endDate||"never"} onChange={e=>setEditData(d=>({...d,endDate:e.target.value}))} className="border border-red-300 rounded-lg px-1 py-1 text-xs bg-white w-28"><option value="never">No exit</option>{WEEK_OPTIONS.filter(w=>w.value!=="now").map(w=>(<option key={w.value} value={w.value}>{w.label}</option>))}</select>:<span className={`text-xs font-medium px-2 py-1 rounded-lg ${isLeaving?"bg-red-100 text-red-700":"text-gray-300"}`}>{isLeaving?"🔴 ":""}{endLbl(p.endDate)}</span>}</td>
                           <td className="px-4 py-3 text-center"><span className={`text-xs font-bold ${frac>=0.9?"text-green-600":frac>=0.5?"text-amber-600":"text-red-500"}`}>{Math.round(frac*100)}%</span></td>
@@ -1015,7 +1067,7 @@ export default function App(){
                 </table>
               </div>
             </Card>
-            {roster.filter(p=>p.removed).length>0&&(<Card><p className="text-sm font-semibold text-gray-700 mb-1">Removed from Roster ({roster.filter(p=>p.removed).length})</p><p className="text-xs text-gray-400 mb-3">Restore if they return.</p><div className="flex flex-wrap gap-2">{roster.filter(p=>p.removed).map(p=>(<div key={p.id} className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2"><span className="text-xs font-medium text-gray-600">{p.name}</span><span className="text-xs text-gray-400">{p.division}</span><button onClick={()=>restorePerson(p.id)} className="text-xs text-green-600 font-semibold">↩ Restore</button></div>))}</div></Card>)}
+            {roster.filter(p=>p.removed).length>0&&(<Card><p className="text-sm font-semibold text-gray-700 mb-1">Removed ({roster.filter(p=>p.removed).length})</p><div className="flex flex-wrap gap-2 mt-3">{roster.filter(p=>p.removed).map(p=>(<div key={p.id} className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2"><span className="text-xs font-medium text-gray-600">{p.name}</span><span className="text-xs text-gray-400">{p.division}</span><button onClick={()=>restorePerson(p.id)} className="text-xs text-green-600 font-semibold">↩ Restore</button></div>))}</div></Card>)}
           </div>
         )}
 
@@ -1023,17 +1075,22 @@ export default function App(){
         {activeTab==="settings"&&(
           <div className="space-y-8">
             <div className="grid grid-cols-4 gap-4">
-              {[{label:"Concurrent projects / PM",value:projectsPerPM,sub:`${availHrsPM}h ÷ ${hoursPerProject}h/project`,color:"#3B82F6"},{label:"Team PM capacity / month",value:totalTeamPMCap.toLocaleString(),sub:`${Math.round(totalPMs)} PMs × ${projectsPerPM} × ${utilPM}%`,color:"#3B82F6"},{label:"QC assets / designer / day",value:autoQCRate,sub:`${qcMinsPerAsset} min per asset on canvas`,color:"#8B5CF6"},{label:"Designer supply / month",value:`${desSupplyHrsPerMonth.toLocaleString()}h`,sub:`${globalHC.des.total} designers × 21d × 8h × ${utilDes}%`,color:"#8B5CF6"}].map(s=>(<div key={s.label} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5"><p className="text-xs font-medium text-gray-400 mb-2">{s.label}</p><p className="text-2xl font-bold" style={{color:s.color}}>{s.value}</p><p className="text-xs text-gray-400 mt-1.5">{s.sub}</p></div>))}
+              {[
+                {label:"Concurrent projects / PM",value:projectsPerPM,sub:`${availHrsPM}h ÷ ${hoursPerProject}h/project`,color:"#3B82F6"},
+                {label:"Team PM capacity / month",value:totalTeamPMCap.toLocaleString(),sub:`${totalPMEfte.toFixed(1)} efte PMs × ${projectsPerPM} × ${utilPM}%`,color:"#3B82F6"},
+                {label:"QC assets / designer / day",value:autoQCRate,sub:`${qcMinsPerAsset} min per asset on canvas`,color:"#8B5CF6"},
+                {label:"Designer supply / month",value:`${desSupplyHrsPerMonth.toLocaleString()}h`,sub:`${totalDesEfte.toFixed(1)} efte × 21d × 8h × ${utilDes}%`,color:"#8B5CF6"},
+              ].map(s=>(<div key={s.label} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5"><p className="text-xs font-medium text-gray-400 mb-2">{s.label}</p><p className="text-2xl font-bold" style={{color:s.color}}>{s.value}</p><p className="text-xs text-gray-400 mt-1.5">{s.sub}</p></div>))}
             </div>
-            <Insight type="tip">All changes take effect immediately across every tab. The model recalculates live as you adjust any value.</Insight>
+            <Insight type="tip">All changes take effect immediately. The model recalculates live across every tab.</Insight>
             <Card>
-              <div className="pb-5 mb-5 border-b border-gray-50"><p className="text-base font-bold text-gray-900">Planning Period</p><p className="text-sm text-gray-400 mt-0.5">The time window used for all capacity calculations.</p></div>
+              <div className="pb-5 mb-5 border-b border-gray-50"><p className="text-base font-bold text-gray-900">Planning Period</p><p className="text-sm text-gray-400 mt-0.5">Display period. The designer hours model always uses monthly FM data regardless of this setting.</p></div>
               <div className="grid grid-cols-4 gap-3">{PERIODS.map((p,i)=>(<button key={p.label} onClick={()=>{setPeriodIdx(i);saveSettings({periodIdx:i});}} className="p-4 rounded-2xl border-2 text-left transition-all" style={periodIdx===i?{borderColor:"#1D1D1F",background:"#1D1D1F",color:"white"}:{borderColor:"#E5E7EB",background:"white",color:"#374151"}}><p className="text-base font-bold">{p.label}</p><p className="text-xs mt-1 opacity-60">{p.workingDays} working days</p></button>))}</div>
             </Card>
             <Card>
-              <div className="pb-5 mb-2 border-b border-gray-50"><p className="text-base font-bold text-gray-900">Utilisation</p><p className="text-sm text-gray-400 mt-0.5">What percentage of a person's working hours are genuinely productive — after accounting for stand-ups, admin and non-project time.</p></div>
-              <SettingRow label="PM Utilisation" description="Productive time for Project Managers as a % of contracted hours. Industry benchmark: 75–85%." value={utilPM} min={60} max={95} onChange={v=>{setUtilPM(v);saveSettings({utilPM:v});}} display={`${utilPM}%`} accent="#3B82F6" derived={`${availHrsPM}h productive hours/week · ${totalTeamPMCap.toLocaleString()} team projects/month`}/>
-              <SettingRow label="Designer Utilisation" description="Productive time for Integrated Designers as a % of contracted hours." value={utilDes} min={60} max={95} onChange={v=>{setUtilDes(v);saveSettings({utilDes:v});}} display={`${utilDes}%`} accent="#8B5CF6" derived={`${desSupplyHrsPerMonth.toLocaleString()}h designer supply/month`}/>
+              <div className="pb-5 mb-2 border-b border-gray-50"><p className="text-base font-bold text-gray-900">Utilisation</p><p className="text-sm text-gray-400 mt-0.5">Productive % of contracted hours. Applies to everyone in the roster regardless of division.</p></div>
+              <SettingRow label="PM Utilisation" description="Drives projectsPerPM and totalTeamPMCap. Industry benchmark: 75–85%." value={utilPM} min={60} max={95} onChange={v=>{setUtilPM(v);saveSettings({utilPM:v});}} display={`${utilPM}%`} accent="#3B82F6" derived={`${availHrsPM}h productive/week → ${projectsPerPM} concurrent/PM → ${totalTeamPMCap.toLocaleString()} team projects/month`}/>
+              <SettingRow label="Designer Utilisation" description="Drives desSupplyHrsPerMonth and all coverage calculations." value={utilDes} min={60} max={95} onChange={v=>{setUtilDes(v);saveSettings({utilDes:v});}} display={`${utilDes}%`} accent="#8B5CF6" derived={`${totalDesEfte.toFixed(1)} efte × 21d × 8h × ${utilDes}% = ${desSupplyHrsPerMonth.toLocaleString()}h/month supply`}/>
             </Card>
             <Card>
               <div className="pb-5 mb-2 border-b border-gray-50">
@@ -1047,44 +1104,58 @@ export default function App(){
                   <span className="text-lg font-bold text-blue-700">{projectsPerPM} concurrent</span>
                 </div>
               </div>
-              <SettingRow label="Working hours per week" description="Total contracted hours per week." value={pmHoursPerWeek} min={35} max={45} step={0.5} onChange={v=>{setPmHoursPerWeek(v);saveSettings({pmHoursPerWeek:v});}} display={`${pmHoursPerWeek}h`} accent="#3B82F6"/>
-              <SettingRow label="Hours per project per week" description="Average time a PM spends managing one active project per week. Range: 1.5h (high-volume simple) to 4h (complex). Default 2.5h for eComm asset projects." value={hoursPerProject} min={0.5} max={8} step={0.5} onChange={v=>{setHoursPerProject(v);saveSettings({hoursPerProject:v});}} display={`${hoursPerProject}h`} accent="#3B82F6" derived={`${projectsPerPM} concurrent projects/PM · ${totalTeamPMCap.toLocaleString()} total team capacity/month`}/>
+              <SettingRow label="Working hours per week" description="Total contracted hours. Standard = 40h." value={pmHoursPerWeek} min={35} max={45} step={0.5} onChange={v=>{setPmHoursPerWeek(v);saveSettings({pmHoursPerWeek:v});}} display={`${pmHoursPerWeek}h`} accent="#3B82F6"/>
+              <SettingRow label="Hours per project per week" description="Average PM time per active project per week. Range: 1.5h (high-volume simple) to 4h (complex)." value={hoursPerProject} min={0.5} max={8} step={0.5} onChange={v=>{setHoursPerProject(v);saveSettings({hoursPerProject:v});}} display={`${hoursPerProject}h`} accent="#3B82F6" derived={`${projectsPerPM} concurrent/PM · ${totalTeamPMCap.toLocaleString()} total team capacity/month`}/>
             </Card>
             <Card>
-              <div className="pb-5 mb-2 border-b border-gray-50"><p className="text-base font-bold text-gray-900">Designer Throughput</p><p className="text-sm text-gray-400 mt-0.5">Controls speed of manual authoring, automated QC review, and master template setup cost.</p></div>
-              <SettingRow label="Manual production rate" description="Assets a designer can fully author per day for Complex, Creation and Bespoke project types." value={manualRate} min={10} max={50} onChange={v=>{setManualRate(v);saveSettings({manualRate:v});}} display={`${manualRate} assets/day`} accent="#F97316" derived={`Manual-only capacity: ${manualCap.toLocaleString()} assets/month`}/>
-              <SettingRow label="QC time per automated asset" description="Minutes to review each auto-generated asset on canvas — crop, copy, brand compliance, cascade fixes." value={qcMinsPerAsset} min={0.5} max={10} step={0.5} onChange={v=>{setQcMinsPerAsset(v);saveSettings({qcMinsPerAsset:v});}} display={`${qcMinsPerAsset} min/asset`} accent="#8B5CF6" derived={`${autoQCRate} assets/day · ${(autoQCRate/manualRate).toFixed(1)}× faster than manual`}/>
-              <SettingRow label="Masters per automation project" description="Format master templates built before automation runs (e.g. H, V, Square = 3)." value={mastersPerProj} min={1} max={6} step={1} onChange={v=>{setMastersPerProj(v);saveSettings({mastersPerProj:v});}} display={`${mastersPerProj} masters`} accent="#8B5CF6"/>
-              <SettingRow label="Hours to build one master" description="Time to design and finalise one format master including layout, copy zones, brand review and sign-off." value={hrsPerMaster} min={1} max={8} step={0.5} onChange={v=>{setHrsPerMaster(v);saveSettings({hrsPerMaster:v});}} display={`${hrsPerMaster}h`} accent="#8B5CF6" derived={`${totalMasterHrs}h designer setup per automation project (${mastersPerProj} × ${hrsPerMaster}h)`}/>
+              <div className="pb-5 mb-2 border-b border-gray-50"><p className="text-base font-bold text-gray-900">Designer Throughput</p></div>
+              <SettingRow label="Manual production rate" description="Assets authored per day for non-auto project types. Drives manualProdHrs and the manual capacity ceiling." value={manualRate} min={10} max={50} onChange={v=>{setManualRate(v);saveSettings({manualRate:v});}} display={`${manualRate} assets/day`} accent="#F97316" derived={`Manual cap: ${manualCap.toLocaleString()} assets/month`}/>
+              <SettingRow label="QC time per automated asset" description="Minutes to review each auto-generated asset on canvas. Drives qcHrs and autoQCRate." value={qcMinsPerAsset} min={0.5} max={10} step={0.5} onChange={v=>{setQcMinsPerAsset(v);saveSettings({qcMinsPerAsset:v});}} display={`${qcMinsPerAsset} min/asset`} accent="#8B5CF6" derived={`${autoQCRate} assets/day · ${(autoQCRate/manualRate).toFixed(1)}× faster than manual`}/>
+              <SettingRow label="Masters per automation project" description="Format master templates built before automation runs. Built once per project brief — NOT once per week of the month." value={mastersPerProj} min={1} max={6} step={1} onChange={v=>{setMastersPerProj(v);saveSettings({mastersPerProj:v});}} display={`${mastersPerProj} masters`} accent="#8B5CF6" derived={`${totalMasterHrs}h setup per project (${mastersPerProj} × ${hrsPerMaster}h)`}/>
+              <SettingRow label="Hours to build one master" description="Time to design and finalise one format master — layout, copy zones, brand review, sign-off." value={hrsPerMaster} min={1} max={8} step={0.5} onChange={v=>{setHrsPerMaster(v);saveSettings({hrsPerMaster:v});}} display={`${hrsPerMaster}h`} accent="#8B5CF6" derived={`masterSetupHrs = auto projects × ${mastersPerProj} × ${hrsPerMaster}h`}/>
             </Card>
             <Card>
               <div className="pb-5 mb-5 border-b border-gray-50"><p className="text-base font-bold text-gray-900">SLA Calculator Defaults</p></div>
               <div className="grid grid-cols-3 gap-6">
-                <div><p className="text-sm font-semibold text-gray-800 mb-1">Client Feedback Rounds</p><p className="text-xs text-gray-400 mb-3">Realistic includes revision rounds. Best Case assumes first-pass approval.</p><div className="flex gap-2 p-1 bg-gray-100 rounded-xl">{[{l:"Realistic",v:true},{l:"Best Case",v:false}].map(o=>(<button key={String(o.v)} onClick={()=>{setClientDays(o.v);saveSettings({clientDays:o.v});}} className="flex-1 py-2 rounded-lg text-sm font-semibold transition-all" style={clientDays===o.v?{background:"white",color:"#1D1D1F",boxShadow:"0 1px 3px rgba(0,0,0,0.1)"}:{color:"#6B7280"}}>{o.l}</button>))}</div></div>
-                <div><p className="text-sm font-semibold text-gray-800 mb-1">EAN Band</p><p className="text-xs text-gray-400 mb-3">EAN codes for syndication. Drives the Syndication stage duration.</p><div className="flex gap-2">{["1-5 EANs","5-10 EANs","10-15 EANs"].map(b=>(<button key={b} onClick={()=>{setEanBand(b);saveSettings({eanBand:b});}} className="flex-1 py-2 rounded-xl text-xs font-semibold border-2 transition-all" style={eanBand===b?{borderColor:"#0F172A",background:"#0F172A",color:"white"}:{borderColor:"#E5E7EB",color:"#6B7280"}}>{b.replace(" EANs","")}</button>))}</div></div>
-                <div><p className="text-sm font-semibold text-gray-800 mb-1">Syndication Complexity</p><p className="text-xs text-gray-400 mb-3">Simple = standard fields. Complex = multi-attribute, multi-market.</p><div className="flex gap-2">{["Simple","Mid","Complex"].map(c=>(<button key={c} onClick={()=>{setSyndCplx(c);saveSettings({syndCplx:c});}} className="flex-1 py-2 rounded-xl text-xs font-semibold border-2 transition-all" style={syndCplx===c?{borderColor:"#0F172A",background:"#0F172A",color:"white"}:{borderColor:"#E5E7EB",color:"#6B7280"}}>{c}</button>))}</div></div>
+                <div><p className="text-sm font-semibold text-gray-800 mb-1">Client Feedback Rounds</p><p className="text-xs text-gray-400 mb-3">Realistic = includes revision rounds. Best Case = first-pass approval.</p><div className="flex gap-2 p-1 bg-gray-100 rounded-xl">{[{l:"Realistic",v:true},{l:"Best Case",v:false}].map(o=>(<button key={String(o.v)} onClick={()=>{setClientDays(o.v);saveSettings({clientDays:o.v});}} className="flex-1 py-2 rounded-lg text-sm font-semibold transition-all" style={clientDays===o.v?{background:"white",color:"#1D1D1F",boxShadow:"0 1px 3px rgba(0,0,0,0.1)"}:{color:"#6B7280"}}>{o.l}</button>))}</div></div>
+                <div><p className="text-sm font-semibold text-gray-800 mb-1">EAN Band</p><p className="text-xs text-gray-400 mb-3">EAN codes in scope. Drives Syndication stage duration.</p><div className="flex gap-2">{["1-5 EANs","5-10 EANs","10-15 EANs"].map(b=>(<button key={b} onClick={()=>{setEanBand(b);saveSettings({eanBand:b});}} className="flex-1 py-2 rounded-xl text-xs font-semibold border-2 transition-all" style={eanBand===b?{borderColor:"#0F172A",background:"#0F172A",color:"white"}:{borderColor:"#E5E7EB",color:"#6B7280"}}>{b.replace(" EANs","")}</button>))}</div></div>
+                <div><p className="text-sm font-semibold text-gray-800 mb-1">Syndication Complexity</p><p className="text-xs text-gray-400 mb-3">Simple = standard fields. Complex = multi-attribute.</p><div className="flex gap-2">{["Simple","Mid","Complex"].map(c=>(<button key={c} onClick={()=>{setSyndCplx(c);saveSettings({syndCplx:c});}} className="flex-1 py-2 rounded-xl text-xs font-semibold border-2 transition-all" style={syndCplx===c?{borderColor:"#0F172A",background:"#0F172A",color:"white"}:{borderColor:"#E5E7EB",color:"#6B7280"}}>{c}</button>))}</div></div>
               </div>
             </Card>
             <Card>
-              <div className="pb-5 mb-5 border-b border-gray-50"><p className="text-base font-bold text-gray-900">Data Source & Model Notes</p></div>
+              <div className="pb-5 mb-5 border-b border-gray-50"><p className="text-base font-bold text-gray-900">Model Notes — v18.9</p></div>
               <div className="grid grid-cols-2 gap-6">
-                <div className="space-y-3">
-                  <p className="text-sm font-semibold text-gray-700">Forecast Source</p>
-                  <p className="text-xs text-gray-500 leading-relaxed">Oliver Forecast 2026 & Capacity Plan · GRAND TOTAL LLD 50% March tab.</p>
-                  {[{label:"Jan",w:4,wf:162,mf:648},{label:"Mar",w:5,wf:272,mf:1360},{label:"Jun",w:5,wf:588,mf:2940}].map(r=>(<div key={r.label} className="flex items-center gap-2 text-xs"><span className="font-semibold text-gray-600 w-6">{r.label}</span><span className="text-gray-400">{r.w} weeks × {r.wf}/wk =</span><span className="font-semibold text-gray-700">{r.mf.toLocaleString()} projects</span></div>))}
-                </div>
                 <div className="space-y-2">
-                  <p className="text-sm font-semibold text-gray-700">Key Formulas</p>
+                  <p className="text-sm font-semibold text-gray-700">Key formulas</p>
                   {[
-                    {label:"Asset volume",formula:"FM forecast fm.ldb + fm.ppd + fm.lld (ground truth)"},
-                    {label:"Auto ratio/div",formula:"Volume tab: auto-eligible assets ÷ total assets per division"},
-                    {label:"Auto assets",formula:"fm.div × auto ratio × (division go-live active?)"},
-                    {label:"Master setup",formula:"auto proj × mastersPerProj × hrsPerMaster (post go-live)"},
-                    {label:"QC hours",formula:"auto assets × qcMinsPerAsset ÷ 60 (post go-live)"},
-                    {label:"Manual hours",formula:"(fm.gt − auto assets) ÷ manualRate × 8h"},
-                    {label:"Designer supply",formula:`${globalHC.des.total} × 21d × 8h × ${utilDes}% = ${desSupplyHrsPerMonth.toLocaleString()}h/mo`},
+                    {label:"desEfte[div]",formula:"sum(availFrac × divWeight) per designer — ALL = ⅓ per division"},
+                    {label:"totalDesEfte",formula:"desEfte.LDB + desEfte.PPD + desEfte.LLD = sum of all availFrac"},
+                    {label:"Supply",formula:`totalDesEfte × 21d × 8h × ${utilDes}% = ${desSupplyHrsPerMonth.toLocaleString()}h/mo`},
+                    {label:"Div capacity",formula:`desEfte[div] × 21d × util% × rate`},
+                    {label:"Auto assets/div",formula:`fm.div × simplePct (if live)`},
+                    {label:"Manual assets",formula:`fm.gt − auto assets (always = fm.gt total)`},
+                    {label:"Auto projects",formula:`fm.divProj × simplePct (once per brief, NO ×weeks)`},
+                    {label:"Master setup h",formula:`auto proj × ${mastersPerProj} × ${hrsPerMaster}h`},
+                    {label:"QC hours",formula:`auto assets × ${qcMinsPerAsset}min ÷ 60`},
+                    {label:"Manual hours",formula:`manual assets ÷ ${manualRate}/day × 8h`},
                     {label:"Coverage RAG",formula:"≥100% green · ≥75% amber · <75% red"},
                   ].map(f=>(<div key={f.label} className="flex items-start gap-2 text-xs"><span className="font-semibold text-gray-600 w-28 flex-shrink-0">{f.label}</span><span className="text-gray-400">{f.formula}</span></div>))}
+                </div>
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-gray-700">Settings impact map</p>
+                  {[
+                    {setting:"Des Utilisation %",drives:"desSupplyHrsPerMonth, all coverage %"},
+                    {setting:"Manual rate",drives:"manualProdHrs, manualCap, blended rate"},
+                    {setting:"QC time (min)",drives:"qcHrs, autoQCRate, blended rate"},
+                    {setting:"Masters/project",drives:"masterSetupHrs (once per project brief)"},
+                    {setting:"Hrs per master",drives:"masterSetupHrs"},
+                    {setting:"Simple % (Auto)",drives:"auto asset split, auto project count, blended rate"},
+                    {setting:"Go-live month",drives:"isAutoLive() per division"},
+                    {setting:"PM Utilisation %",drives:"projectsPerPM, totalTeamPMCap"},
+                    {setting:"Hrs/project",drives:"projectsPerPM, totalTeamPMCap"},
+                    {setting:"Start/end dates",drives:"availFrac → desEfte[div] + pmEfte"},
+                    {setting:"division=ALL",drives:"efte split ⅓ across LDB, PPD, LLD"},
+                  ].map(f=>(<div key={f.setting} className="flex items-start gap-2 text-xs"><span className="font-semibold text-gray-600 w-32 flex-shrink-0">{f.setting}</span><span className="text-gray-400">→ {f.drives}</span></div>))}
                 </div>
               </div>
               <div className="mt-5 pt-5 border-t border-gray-50 flex items-center gap-3">
@@ -1100,8 +1171,8 @@ export default function App(){
       </div>
 
       <div className="max-w-7xl mx-auto px-6 py-6 flex items-center justify-between border-t border-gray-100">
-        <p className="text-xs text-gray-300">L'Oréal eCommerce Programme · Capacity Planning Tool v18.6</p>
-        <p className="text-xs text-gray-300">{globalHC.des.total} designers · {manualRate}/day manual · {autoQCRate}/day QC · {projectsPerPM} proj/PM · {dbStatus==="connected"?"🟢 Supabase":"⚪ Offline"}</p>
+        <p className="text-xs text-gray-300">L'Oréal eCommerce Programme · Capacity Planning Tool v18.9</p>
+        <p className="text-xs text-gray-300">{totalDesEfte.toFixed(1)} efte designers · {manualRate}/day manual · {autoQCRate}/day QC · {projectsPerPM} proj/PM · {dbStatus==="connected"?"🟢 Supabase":"⚪ Offline"}</p>
       </div>
     </div>
   );
