@@ -255,7 +255,10 @@ export default function App(){
   const projectsPerPM=useMemo(()=>Math.max(1,Math.floor(pmHoursPerWeek*(utilPM/100)/hoursPerProject)),[pmHoursPerWeek,hoursPerProject,utilPM]);
   const availHrsPM=+(pmHoursPerWeek*(utilPM/100)).toFixed(1);
   const totalMasterHrs=mastersPerProj*hrsPerMaster;
-  const updateAuto=(div,field,val)=>setAutoConfig(p=>({...p,[div]:{...p[div],[field]:val}}));
+  const updateAuto=(div,field,val)=>{
+    setAutoConfig(p=>({...p,[div]:{...p[div],[field]:val}}));
+    saveSettings({[`auto${div}_${field}`]:String(val)});
+  };
   const PT=useMemo(()=>PT_BASE.map(pt=>({...pt,autoEligible:mix.find(x=>x.id===pt.id)?.autoEligible??false})),[mix]);
   const saveSettings=useCallback(async updates=>{if(!hasSupabase)return;await sbUpsert("settings",Object.entries(updates).map(([key,value])=>({key,value:String(value)})));},[]);
 
@@ -281,6 +284,27 @@ export default function App(){
           if(s.key==="periodIdx")setPeriodIdx(+s.value);if(s.key==="eanBand")setEanBand(s.value);
           if(s.key==="syndCplx")setSyndCplx(s.value);if(s.key==="clientDays")setClientDays(s.value==="true");
         });
+        const{data:acD}=await sbSelect("actuals");
+        if(acD&&acD.length){
+          setActuals(FM.map(fm=>{
+            const found=acD.find(a=>a.month===fm.month);
+            return found
+              ?{month:fm.month,actualAssets:found.actualAssets||0,actualLdb:found.actualLdb||0,actualPpd:found.actualPpd||0,actualLld:found.actualLld||0}
+              :{month:fm.month,actualAssets:0,actualLdb:0,actualPpd:0,actualLld:0};
+          }));
+        }
+        const newAuto={...DEFAULT_AUTO};
+        if(stD&&stD.length){
+          stD.forEach(s=>{
+            if(s.key==="autoLLD_goLiveMonth")newAuto.LLD.goLiveMonth=s.value;
+            if(s.key==="autoLLD_simplePct")newAuto.LLD.simplePct=+s.value;
+            if(s.key==="autoLDB_goLiveMonth")newAuto.LDB.goLiveMonth=s.value;
+            if(s.key==="autoLDB_simplePct")newAuto.LDB.simplePct=+s.value;
+            if(s.key==="autoPPD_goLiveMonth")newAuto.PPD.goLiveMonth=s.value;
+            if(s.key==="autoPPD_simplePct")newAuto.PPD.simplePct=+s.value;
+          });
+          setAutoConfig(newAuto);
+        }
         setDbStatus("connected");
       }catch{setDbStatus("error");}
     })();
@@ -299,7 +323,16 @@ export default function App(){
   const setOv=async(ptId,key,val)=>{const d=Math.max(0,parseInt(String(val))||0);setSlaOv(prev=>({...prev,[ptId]:{...(prev[ptId]||{}),[key]:d}}));if(hasSupabase){setSaving(true);await sbUpsert("sla_overrides",[{pt_id:ptId,stage_key:key,days:d}]);setSaving(false);}};
   const resetOv=async id=>{setSlaOv(prev=>{const n={...prev};delete n[id];return n;});if(hasSupabase){setSaving(true);await sbDelete("sla_overrides",`pt_id=eq.${id}`);setSaving(false);}};
   const hasOv=id=>!!(slaOv[id]&&Object.keys(slaOv[id]).length);
-  const updateActualFn=(i,field,val)=>setActuals(prev=>prev.map((a,idx)=>idx===i?{...a,[field]:Math.max(0,parseInt(val)||0)}:a));
+  const updateActualFn=async(i,field,val)=>{
+    const v=Math.max(0,parseInt(val)||0);
+    setActuals(prev=>prev.map((a,idx)=>idx===i?{...a,[field]:v}:a));
+    if(hasSupabase){
+      const month=FM[i].month;
+      setSaving(true);
+      await sbUpsert("actuals",[{month,...actuals[i],[field]:v}]);
+      setSaving(false);
+    }
+  };
 
   const capacityRoster=useMemo(()=>roster.filter(p=>!p.removed&&p.status==="Active"),[roster]);
 
