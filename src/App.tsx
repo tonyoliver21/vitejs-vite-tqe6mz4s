@@ -8,9 +8,7 @@ const hasSupabase = !!(SUPABASE_URL && SUPABASE_KEY);
 async function sbSelect(t) {
   if (!hasSupabase) return { data: null };
   try {
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/${t}?select=*`, {
-      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
-    });
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/${t}?select=*`, { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } });
     return { data: await r.json() };
   } catch { return { data: null }; }
 }
@@ -44,7 +42,6 @@ async function sbDelete(t, f) {
   } catch {}
 }
 
-// ─── AUTO CONFIG ─────────────────────────────────────────────────────────────
 const MONTH_LIST = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const MONTH_IDX  = Object.fromEntries(MONTH_LIST.map((m,i)=>[m,i]));
 const GO_LIVE_OPTIONS = ["Off",...MONTH_LIST];
@@ -60,7 +57,6 @@ function blendedRate(div, month, cfg, qcRate, manualRate) {
   return Math.round(sp * qcRate + (1 - sp) * manualRate);
 }
 
-// ─── WEEK OPTIONS ─────────────────────────────────────────────────────────────
 function generateWeeks() {
   const out = [{ label:"Available Now", value:"now" }];
   const cur = new Date("2026-01-05");
@@ -78,17 +74,11 @@ function availFrac(startDate, endDate, wd) {
   const today = new Date();
   if (startDate && startDate !== "now") {
     const s = new Date(startDate);
-    if (s > today) {
-      const calD = Math.max(0, (s - today) / 86400000);
-      f = Math.min(f, Math.max(0, (wd - calD * (5/7)) / wd));
-    }
+    if (s > today) f = Math.min(f, Math.max(0, (wd - (s-today)/86400000*(5/7)) / wd));
   }
   if (endDate && endDate !== "never") {
     const e = new Date(endDate);
-    if (e > today) {
-      const calR = Math.max(0, (e - today) / 86400000);
-      f = Math.min(f, Math.max(0, calR * (5/7) / wd));
-    }
+    if (e > today) f = Math.min(f, Math.max(0, (e-today)/86400000*(5/7) / wd));
   }
   return Math.max(0, Math.min(1, f));
 }
@@ -96,25 +86,19 @@ function startLbl(v) { return (!v||v==="now")?"Now":(WEEK_OPTIONS.find(w=>w.valu
 function endLbl(v)   { return (!v||v==="never")?"—":(WEEK_OPTIONS.find(w=>w.value===v)?.label??v); }
 
 // ─── FORECAST DATA ─────────────────────────────────────────────────────────
-// weeklyForecast  = Oliver line 31 "no. of Projects (Forecast)" — weekly figure
-// weeksInMonth    = actual week-starts in that calendar month
-// monthlyForecast = weeklyForecast × weeksInMonth  ← correct monthly total
-// permPMWeekly    = Oliver "no. of Projects (based on PM capacity) - PERM" weekly avg
-// flyPMWeekly     = Oliver "no. of Projects (based Flying Team - PM)" weekly avg
-// permPMMonthly / flyPMMonthly = weekly avg × weeksInMonth
 const FM = [
-  { month:"Jan", ldb:3865,  ppd:3097,  lld:3481,  gt:10443, weeksInMonth:4, weeklyForecast:162, monthlyForecast:648,  permPMWeekly:155, flyPMWeekly:0,  permPMMonthly:620,  flyPMMonthly:0,   ldbProj:54,  ppdProj:50,  lldProj:58  },
-  { month:"Feb", ldb:1953,  ppd:1695,  lld:3306,  gt:6954,  weeksInMonth:4, weeklyForecast:85,  monthlyForecast:340,  permPMWeekly:143, flyPMWeekly:30, permPMMonthly:570,  flyPMMonthly:120, ldbProj:23,  ppdProj:20,  lldProj:42  },
-  { month:"Mar", ldb:2548,  ppd:2357,  lld:5348,  gt:10253, weeksInMonth:5, weeklyForecast:272, monthlyForecast:1360, permPMWeekly:272, flyPMWeekly:76, permPMMonthly:1360, flyPMMonthly:380, ldbProj:67,  ppdProj:62,  lldProj:143 },
-  { month:"Apr", ldb:2855,  ppd:2742,  lld:11230, gt:16827, weeksInMonth:4, weeklyForecast:391, monthlyForecast:1564, permPMWeekly:412, flyPMWeekly:95, permPMMonthly:1647, flyPMMonthly:380, ldbProj:66,  ppdProj:64,  lldProj:261 },
-  { month:"May", ldb:2688,  ppd:2796,  lld:11492, gt:16976, weeksInMonth:4, weeklyForecast:395, monthlyForecast:1580, permPMWeekly:497, flyPMWeekly:0,  permPMMonthly:1988, flyPMMonthly:0,   ldbProj:62,  ppdProj:65,  lldProj:268 },
-  { month:"Jun", ldb:4257,  ppd:4267,  lld:16748, gt:25272, weeksInMonth:5, weeklyForecast:588, monthlyForecast:2940, permPMWeekly:608, flyPMWeekly:90, permPMMonthly:3038, flyPMMonthly:450, ldbProj:99,  ppdProj:99,  lldProj:390 },
-  { month:"Jul", ldb:4334,  ppd:4237,  lld:15737, gt:24308, weeksInMonth:4, weeklyForecast:565, monthlyForecast:2260, permPMWeekly:608, flyPMWeekly:75, permPMMonthly:2432, flyPMMonthly:300, ldbProj:101, ppdProj:99,  lldProj:365 },
-  { month:"Aug", ldb:724,   ppd:777,   lld:3223,  gt:4724,  weeksInMonth:4, weeklyForecast:140, monthlyForecast:560,  permPMWeekly:608, flyPMWeekly:0,  permPMMonthly:2432, flyPMMonthly:0,   ldbProj:21,  ppdProj:23,  lldProj:96  },
-  { month:"Sep", ldb:3326,  ppd:3234,  lld:11774, gt:18334, weeksInMonth:4, weeklyForecast:420, monthlyForecast:1680, permPMWeekly:608, flyPMWeekly:0,  permPMMonthly:2432, flyPMMonthly:0,   ldbProj:76,  ppdProj:74,  lldProj:270 },
-  { month:"Oct", ldb:4034,  ppd:3950,  lld:14471, gt:22455, weeksInMonth:4, weeklyForecast:480, monthlyForecast:1920, permPMWeekly:608, flyPMWeekly:0,  permPMMonthly:2432, flyPMMonthly:0,   ldbProj:86,  ppdProj:84,  lldProj:310 },
-  { month:"Nov", ldb:2993,  ppd:2949,  lld:10902, gt:16844, weeksInMonth:4, weeklyForecast:380, monthlyForecast:1520, permPMWeekly:608, flyPMWeekly:0,  permPMMonthly:2432, flyPMMonthly:0,   ldbProj:67,  ppdProj:66,  lldProj:247 },
-  { month:"Dec", ldb:2285,  ppd:2251,  lld:8336,  gt:12872, weeksInMonth:4, weeklyForecast:290, monthlyForecast:1160, permPMWeekly:608, flyPMWeekly:0,  permPMMonthly:2432, flyPMMonthly:0,   ldbProj:51,  ppdProj:50,  lldProj:189 },
+  { month:"Jan", ldb:3865,  ppd:3097,  lld:3481,  gt:10443, weeksInMonth:4, weeklyForecast:162, monthlyForecast:648,  permPMMonthly:620,  flyPMMonthly:0,   ldbProj:54,  ppdProj:50,  lldProj:58  },
+  { month:"Feb", ldb:1953,  ppd:1695,  lld:3306,  gt:6954,  weeksInMonth:4, weeklyForecast:85,  monthlyForecast:340,  permPMMonthly:570,  flyPMMonthly:120, ldbProj:23,  ppdProj:20,  lldProj:42  },
+  { month:"Mar", ldb:2548,  ppd:2357,  lld:5348,  gt:10253, weeksInMonth:5, weeklyForecast:272, monthlyForecast:1360, permPMMonthly:1360, flyPMMonthly:380, ldbProj:67,  ppdProj:62,  lldProj:143 },
+  { month:"Apr", ldb:2855,  ppd:2742,  lld:11230, gt:16827, weeksInMonth:4, weeklyForecast:391, monthlyForecast:1564, permPMMonthly:1647, flyPMMonthly:380, ldbProj:66,  ppdProj:64,  lldProj:261 },
+  { month:"May", ldb:2688,  ppd:2796,  lld:11492, gt:16976, weeksInMonth:4, weeklyForecast:395, monthlyForecast:1580, permPMMonthly:1988, flyPMMonthly:0,   ldbProj:62,  ppdProj:65,  lldProj:268 },
+  { month:"Jun", ldb:4257,  ppd:4267,  lld:16748, gt:25272, weeksInMonth:5, weeklyForecast:588, monthlyForecast:2940, permPMMonthly:3038, flyPMMonthly:450, ldbProj:99,  ppdProj:99,  lldProj:390 },
+  { month:"Jul", ldb:4334,  ppd:4237,  lld:15737, gt:24308, weeksInMonth:4, weeklyForecast:565, monthlyForecast:2260, permPMMonthly:2432, flyPMMonthly:300, ldbProj:101, ppdProj:99,  lldProj:365 },
+  { month:"Aug", ldb:724,   ppd:777,   lld:3223,  gt:4724,  weeksInMonth:4, weeklyForecast:140, monthlyForecast:560,  permPMMonthly:2432, flyPMMonthly:0,   ldbProj:21,  ppdProj:23,  lldProj:96  },
+  { month:"Sep", ldb:3326,  ppd:3234,  lld:11774, gt:18334, weeksInMonth:4, weeklyForecast:420, monthlyForecast:1680, permPMMonthly:2432, flyPMMonthly:0,   ldbProj:76,  ppdProj:74,  lldProj:270 },
+  { month:"Oct", ldb:4034,  ppd:3950,  lld:14471, gt:22455, weeksInMonth:4, weeklyForecast:480, monthlyForecast:1920, permPMMonthly:2432, flyPMMonthly:0,   ldbProj:86,  ppdProj:84,  lldProj:310 },
+  { month:"Nov", ldb:2993,  ppd:2949,  lld:10902, gt:16844, weeksInMonth:4, weeklyForecast:380, monthlyForecast:1520, permPMMonthly:2432, flyPMMonthly:0,   ldbProj:67,  ppdProj:66,  lldProj:247 },
+  { month:"Dec", ldb:2285,  ppd:2251,  lld:8336,  gt:12872, weeksInMonth:4, weeklyForecast:290, monthlyForecast:1160, permPMMonthly:2432, flyPMMonthly:0,   ldbProj:51,  ppdProj:50,  lldProj:189 },
 ];
 
 const PERIODS = [
@@ -232,9 +216,9 @@ const PROD_DAYS = {
   Creation:{"0-30":6,"30-50":11,"50-100":15,"100-200":26,"200-300":40,"300-500":62},
   Bespoke: {"0-30":10,"30-50":18,"50-100":25,"100-200":42,"200-300":65,"300-500":100},
 };
-const PROD_REVS = { Simple:1, Complex:2, Creation:4, Bespoke:4 };
+const PROD_REVS  = { Simple:1, Complex:2, Creation:4, Bespoke:4 };
 const OPERA_DAYS = {"0-30":1,"30-50":1,"50-100":2,"100-200":3,"200-300":5,"300-500":8};
-const SYND_DAYS = {
+const SYND_DAYS  = {
   Simple: {"1-5 EANs":4,"5-10 EANs":6,"10-15 EANs":8},
   Mid:    {"1-5 EANs":6,"5-10 EANs":9,"10-15 EANs":12},
   Complex:{"1-5 EANs":10,"5-10 EANs":15,"10-15 EANs":20},
@@ -242,15 +226,15 @@ const SYND_DAYS = {
 const ASSET_BANDS = ["0-30","30-50","50-100","100-200","200-300","300-500"];
 
 const PT_BASE = [
-  { id:"cp-simple",     label:"Country Pull – Simple",     stages:[false,false,false,true,true,true,true,false],  color:"#3b82f6" },
-  { id:"cp-adaptation", label:"Country Pull – Adaptation", stages:[false,true,false,true,true,true,true,false],   color:"#6366f1" },
-  { id:"cp-creation",   label:"Country Pull – Creation",   stages:[true,true,false,true,true,true,true,false],    color:"#8b5cf6" },
-  { id:"retailer",      label:"Country Retailer Request",  stages:[false,false,false,false,false,false,false,true],color:"#22c55e" },
-  { id:"gp-eventing",   label:"Global Push – Eventing",    stages:[false,true,true,false,false,false,true,false], color:"#f59e0b" },
-  { id:"gp-pdp",        label:"Global Push – PDP",         stages:[false,true,true,false,false,false,true,false], color:"#f97316" },
-  { id:"lp-eventing",   label:"Local Push – Eventing",     stages:[false,false,false,true,true,true,true,true],   color:"#ef4444" },
-  { id:"lp-pdp",        label:"Local Push – PDP",          stages:[false,false,false,true,true,true,true,true],   color:"#ec4899" },
-  { id:"urgent",        label:"Urgent Brief",              stages:[false,false,false,false,false,true,true,false], color:"#14b8a6" },
+  { id:"cp-simple",     label:"Country Pull – Simple",      stages:[false,false,false,true, true, true, true, false], color:"#3b82f6" },
+  { id:"cp-adaptation", label:"Country Pull – Adaptation",  stages:[false,true, false,true, true, true, true, false], color:"#6366f1" },
+  { id:"cp-creation",   label:"Country Pull – Creation",    stages:[true, true, false,true, true, true, true, false], color:"#8b5cf6" },
+  { id:"retailer",      label:"Country Retailer Request",   stages:[false,false,false,false,false,false,false,true],  color:"#22c55e" },
+  { id:"gp-eventing",   label:"Global Push – Eventing",     stages:[false,true, true, false,false,false,true, false], color:"#f59e0b" },
+  { id:"gp-pdp",        label:"Global Push – PDP",          stages:[false,true, true, false,false,false,true, false], color:"#f97316" },
+  { id:"lp-eventing",   label:"Local Push – Eventing",      stages:[false,false,false,true, true, true, true, true],  color:"#ef4444" },
+  { id:"lp-pdp",        label:"Local Push – PDP",           stages:[false,false,false,true, true, true, true, true],  color:"#ec4899" },
+  { id:"urgent",        label:"Urgent Brief",               stages:[false,false,false,false,false,true, true, false], color:"#14b8a6" },
 ];
 
 const SK = ["missingDMI","mastering","globalRollout","translation","production","operaUpload","syndication"];
@@ -274,95 +258,89 @@ function getDefaultDays(ptId, cplx, aBand, eanBand, syndCplx, withCF) {
   const pt = PT_BASE.find(p=>p.id===ptId);
   if (!pt) return {};
   return {
-    missingDMI:  pt.stages[0]?(6+(withCF?5:0)):0,
-    mastering:   pt.stages[1]?2:0,
+    missingDMI:   pt.stages[0]?(6+(withCF?5:0)):0,
+    mastering:    pt.stages[1]?2:0,
     globalRollout:pt.stages[2]?2:0,
-    translation: (pt.stages[3]||pt.stages[4])?(3+(withCF?6:0)):0,
-    production:  pt.stages[5]?((PROD_DAYS[cplx]?.[aBand]??9)+(withCF?(PROD_REVS[cplx]??2)*4:0)):0,
-    operaUpload: pt.stages[6]?(OPERA_DAYS[aBand]??1):0,
-    syndication: pt.stages[7]?(SYND_DAYS[syndCplx]?.[eanBand]??4):0,
+    translation:  (pt.stages[3]||pt.stages[4])?(3+(withCF?6:0)):0,
+    production:   pt.stages[5]?((PROD_DAYS[cplx]?.[aBand]??9)+(withCF?(PROD_REVS[cplx]??2)*4:0)):0,
+    operaUpload:  pt.stages[6]?(OPERA_DAYS[aBand]??1):0,
+    syndication:  pt.stages[7]?(SYND_DAYS[syndCplx]?.[eanBand]??4):0,
   };
 }
-
 function getWeights(ptId) {
-  const w = { "cp-simple":{pm:0.25,des:0.65},"cp-adaptation":{pm:0.28,des:0.62},"cp-creation":{pm:0.25,des:0.65},"retailer":{pm:0.20,des:0.15},"gp-eventing":{pm:0.35,des:0.45},"gp-pdp":{pm:0.35,des:0.45},"lp-eventing":{pm:0.28,des:0.52},"lp-pdp":{pm:0.28,des:0.52},"urgent":{pm:0.30,des:0.65} };
-  return w[ptId] || { pm:0.28, des:0.62 };
+  const w = {"cp-simple":{pm:0.25,des:0.65},"cp-adaptation":{pm:0.28,des:0.62},"cp-creation":{pm:0.25,des:0.65},"retailer":{pm:0.20,des:0.15},"gp-eventing":{pm:0.35,des:0.45},"gp-pdp":{pm:0.35,des:0.45},"lp-eventing":{pm:0.28,des:0.52},"lp-pdp":{pm:0.28,des:0.52},"urgent":{pm:0.30,des:0.65}};
+  return w[ptId]||{pm:0.28,des:0.62};
 }
 
 let _nextId = 400;
 
 export default function App() {
-  const [roster,         setRoster]        = useState(DEFAULT_ROSTER);
-  const [mix,            setMix]           = useState(DEFAULT_MIX);
-  const [slaOv,          setSlaOv]         = useState({});
-  const [utilPM,         setUtilPM]        = useState(82);
-  const [utilDes,        setUtilDes]       = useState(82);
-  const [manualRate,     setManualRate]    = useState(25);
-  const [projectsPerPM,  setProjectsPerPM] = useState(15);
-  const [periodIdx,      setPeriodIdx]     = useState(0);
-  const [calcCplx,       setCalcCplx]      = useState("Complex");
-  const [eanBand,        setEanBand]       = useState("1-5 EANs");
-  const [syndCplx,       setSyndCplx]      = useState("Simple");
-  const [clientDays,     setClientDays]    = useState(true);
-  const [activeTab,      setActiveTab]     = useState("📊 Capacity");
-  const [divFilter,      setDivFilter]     = useState("All");
-  const [calcType,       setCalcType]      = useState("cp-adaptation");
-  const [calcAssetBand,  setCalcAssetBand] = useState("30-50");
-  const [tmSearch,       setTmSearch]      = useState("");
-  const [tmDiv,          setTmDiv]         = useState("All");
-  const [tmType,         setTmType]        = useState("All");
-  const [tmRole,         setTmRole]        = useState("All");
-  const [showAdd,        setShowAdd]       = useState(false);
-  const [newP,           setNewP]          = useState({name:"",role:"Project Manager",family:"PM / Delivery",type:"FTE",division:"LDB",status:"Active",startDate:"now",endDate:"never"});
-  const [editId,         setEditId]        = useState(null);
-  const [editData,       setEditData]      = useState({});
-  const [dbStatus,       setDbStatus]      = useState(hasSupabase?"loading":"offline");
-  const [saving,         setSaving]        = useState(false);
-  const [prevMonths,     setPrevMonths]    = useState(1);
-  const [forecastDiv,    setForecastDiv]   = useState("Total");
-  const [projView,       setProjView]      = useState("Total");
-  const [actuals,        setActuals]       = useState(FM.map(m=>({month:m.month,actualAssets:0,actualLdb:0,actualPpd:0,actualLld:0})));
-  const [autoEnabled,    setAutoEnabled]   = useState(true);
-  const [autoConfig,     setAutoConfig]    = useState(DEFAULT_AUTO);
-  const [autoQCRate,     setAutoQCRate]    = useState(200);
-  const [autoScenario,   setAutoScenario]  = useState("with");
+  const [roster,        setRoster]        = useState(DEFAULT_ROSTER);
+  const [mix,           setMix]           = useState(DEFAULT_MIX);
+  const [slaOv,         setSlaOv]         = useState({});
+  const [utilPM,        setUtilPM]        = useState(82);
+  const [utilDes,       setUtilDes]       = useState(82);
+  const [manualRate,    setManualRate]    = useState(25);
+  const [projectsPerPM, setProjectsPerPM] = useState(15);
+  const [periodIdx,     setPeriodIdx]     = useState(0);
+  const [calcCplx,      setCalcCplx]      = useState("Complex");
+  const [eanBand,       setEanBand]       = useState("1-5 EANs");
+  const [syndCplx,      setSyndCplx]      = useState("Simple");
+  const [clientDays,    setClientDays]    = useState(true);
+  const [activeTab,     setActiveTab]     = useState("📊 Capacity");
+  const [divFilter,     setDivFilter]     = useState("All");
+  const [calcType,      setCalcType]      = useState("cp-adaptation");
+  const [calcAssetBand, setCalcAssetBand] = useState("30-50");
+  const [tmSearch,      setTmSearch]      = useState("");
+  const [tmDiv,         setTmDiv]         = useState("All");
+  const [tmType,        setTmType]        = useState("All");
+  const [tmRole,        setTmRole]        = useState("All");
+  const [showAdd,       setShowAdd]       = useState(false);
+  const [newP,          setNewP]          = useState({name:"",role:"Project Manager",family:"PM / Delivery",type:"FTE",division:"LDB",status:"Active",startDate:"now",endDate:"never"});
+  const [editId,        setEditId]        = useState(null);
+  const [editData,      setEditData]      = useState({});
+  const [dbStatus,      setDbStatus]      = useState(hasSupabase?"loading":"offline");
+  const [saving,        setSaving]        = useState(false);
+  const [prevMonths,    setPrevMonths]    = useState(1);
+  const [forecastDiv,   setForecastDiv]   = useState("Total");
+  const [projView,      setProjView]      = useState("Total");
+  const [actuals,       setActuals]       = useState(FM.map(m=>({month:m.month,actualAssets:0,actualLdb:0,actualPpd:0,actualLld:0})));
+  const [autoEnabled,   setAutoEnabled]   = useState(true);
+  const [autoConfig,    setAutoConfig]    = useState(DEFAULT_AUTO);
+  const [autoQCRate,    setAutoQCRate]    = useState(200);
+  const [autoScenario,  setAutoScenario]  = useState("with");
 
   const period = PERIODS[periodIdx];
   const WD = period.workingDays;
 
   const updateAuto = (div,field,val) => setAutoConfig(p=>({...p,[div]:{...p[div],[field]:val}}));
-
-  // PT array merges autoEligible from mix state
-  const PT = useMemo(() => PT_BASE.map(pt => ({ ...pt, autoEligible: mix.find(x=>x.id===pt.id)?.autoEligible??false })), [mix]);
+  const PT = useMemo(()=>PT_BASE.map(pt=>({...pt, autoEligible: mix.find(x=>x.id===pt.id)?.autoEligible??false})),[mix]);
 
   const saveSettings = useCallback(async updates => {
     if (!hasSupabase) return;
     await sbUpsert("settings", Object.entries(updates).map(([key,value])=>({key,value:String(value)})));
-  }, []);
+  },[]);
 
-  useEffect(() => {
+  useEffect(()=>{
     if (!hasSupabase) { setDbStatus("offline"); return; }
-    (async () => {
+    (async()=>{
       setDbStatus("loading");
       try {
-        const { data: rD } = await sbSelect("roster");
-        if (rD && rD.length) setRoster(rD.map(p=>({...p,startDate:p.startDate||"now",endDate:p.endDate||"never"})));
-        else await sbUpsert("roster", DEFAULT_ROSTER);
-
-        const { data: mD } = await sbSelect("project_mix");
-        if (mD && mD.length) setMix(mD.map(m=>({...m,
-          assetsLDB: m.assetsLDB ?? DEFAULT_MIX.find(d=>d.id===m.id)?.assetsLDB ?? 40,
-          assetsPPD: m.assetsPPD ?? DEFAULT_MIX.find(d=>d.id===m.id)?.assetsPPD ?? 40,
-          assetsLLD: m.assetsLLD ?? DEFAULT_MIX.find(d=>d.id===m.id)?.assetsLLD ?? 50,
-          autoEligible: m.autoEligible ?? DEFAULT_MIX.find(d=>d.id===m.id)?.autoEligible ?? false,
+        const{data:rD}=await sbSelect("roster");
+        if(rD&&rD.length) setRoster(rD.map(p=>({...p,startDate:p.startDate||"now",endDate:p.endDate||"never"})));
+        else await sbUpsert("roster",DEFAULT_ROSTER);
+        const{data:mD}=await sbSelect("project_mix");
+        if(mD&&mD.length) setMix(mD.map(m=>({...m,
+          assetsLDB:m.assetsLDB??DEFAULT_MIX.find(d=>d.id===m.id)?.assetsLDB??40,
+          assetsPPD:m.assetsPPD??DEFAULT_MIX.find(d=>d.id===m.id)?.assetsPPD??40,
+          assetsLLD:m.assetsLLD??DEFAULT_MIX.find(d=>d.id===m.id)?.assetsLLD??50,
+          autoEligible:m.autoEligible??DEFAULT_MIX.find(d=>d.id===m.id)?.autoEligible??false,
         })));
-        else await sbUpsert("project_mix", DEFAULT_MIX);
-
-        const { data: sD } = await sbSelect("sla_overrides");
-        if (sD && sD.length) { const ov={}; sD.forEach(r=>{if(!ov[r.pt_id])ov[r.pt_id]={};ov[r.pt_id][r.stage_key]=r.days;}); setSlaOv(ov); }
-
-        const { data: stD } = await sbSelect("settings");
-        if (stD && stD.length) stD.forEach(s=>{
+        else await sbUpsert("project_mix",DEFAULT_MIX);
+        const{data:sD}=await sbSelect("sla_overrides");
+        if(sD&&sD.length){const ov={};sD.forEach(r=>{if(!ov[r.pt_id])ov[r.pt_id]={};ov[r.pt_id][r.stage_key]=r.days;});setSlaOv(ov);}
+        const{data:stD}=await sbSelect("settings");
+        if(stD&&stD.length) stD.forEach(s=>{
           if(s.key==="utilPM")setUtilPM(+s.value);
           if(s.key==="utilDes")setUtilDes(+s.value);
           if(s.key==="manualRate")setManualRate(+s.value);
@@ -376,16 +354,15 @@ export default function App() {
         setDbStatus("connected");
       } catch { setDbStatus("error"); }
     })();
-  }, []);
+  },[]);
 
-  // Scale mix when period changes
-  useMemo(() => {
-    if (period.months !== prevMonths) {
-      const sc = period.months / prevMonths;
-      setMix(prev => { const u=prev.map(m=>({...m,LDB:Math.round(m.LDB*sc),PPD:Math.round(m.PPD*sc),LLD:Math.round(m.LLD*sc)})); if(hasSupabase)sbUpsert("project_mix",u); return u; });
+  useMemo(()=>{
+    if(period.months!==prevMonths){
+      const sc=period.months/prevMonths;
+      setMix(prev=>{const u=prev.map(m=>({...m,LDB:Math.round(m.LDB*sc),PPD:Math.round(m.PPD*sc),LLD:Math.round(m.LLD*sc)}));if(hasSupabase)sbUpsert("project_mix",u);return u;});
       setPrevMonths(period.months);
     }
-  }, [period.months]);
+  },[period.months]);
 
   const updateMixCount  = async(id,div,val)=>{const u=mix.map(m=>m.id===id?{...m,[div]:Math.max(0,val)}:m);setMix(u);if(hasSupabase){setSaving(true);await sbUpsert("project_mix",u.find(m=>m.id===id));setSaving(false);}};
   const updateMixAssets = async(id,dk,val)=>{const u=mix.map(m=>m.id===id?{...m,[dk]:Math.max(1,val)}:m);setMix(u);if(hasSupabase){setSaving(true);await sbUpsert("project_mix",u.find(m=>m.id===id));setSaving(false);}};
@@ -400,28 +377,27 @@ export default function App() {
   const hasOv           = id=>!!(slaOv[id]&&Object.keys(slaOv[id]).length);
   const updateActual    = (i,field,val)=>setActuals(prev=>prev.map((a,idx)=>idx===i?{...a,[field]:Math.max(0,parseInt(val)||0)}:a));
 
-  // Pools
   const capacityRoster = useMemo(()=>roster.filter(p=>!p.removed&&p.status==="Active"),[roster]);
 
   const poolsByDiv = useMemo(()=>{
-    const res = {};
+    const res={};
     DIVS.forEach(div=>{
-      const sum = arr => arr.reduce((s,p)=>s+availFrac(p.startDate,p.endDate,WD),0);
-      const pmF  = capacityRoster.filter(p=>p.role==="Project Manager"    &&p.type==="FTE"      &&p.division===div);
-      const pmFL = capacityRoster.filter(p=>p.role==="Project Manager"    &&p.type==="Freelance"&&p.division===div);
-      const dF   = capacityRoster.filter(p=>p.role==="Integrated Designer"&&p.type==="FTE"      &&p.division===div);
-      const dFL  = capacityRoster.filter(p=>p.role==="Integrated Designer"&&p.type==="Freelance"&&p.division===div);
+      const sum=arr=>arr.reduce((s,p)=>s+availFrac(p.startDate,p.endDate,WD),0);
+      const pmF  =capacityRoster.filter(p=>p.role==="Project Manager"    &&p.type==="FTE"      &&p.division===div);
+      const pmFL =capacityRoster.filter(p=>p.role==="Project Manager"    &&p.type==="Freelance"&&p.division===div);
+      const dF   =capacityRoster.filter(p=>p.role==="Integrated Designer"&&p.type==="FTE"      &&p.division===div);
+      const dFL  =capacityRoster.filter(p=>p.role==="Integrated Designer"&&p.type==="Freelance"&&p.division===div);
       res[div]={
         pm:  {fte:pmF.length, fl:pmFL.length, total:pmF.length+pmFL.length, efte:sum(pmF)+sum(pmFL)},
         des: {fte:dF.length,  fl:dFL.length,  total:dF.length+dFL.length,  efteFTE:sum(dF), efteFL:sum(dFL), efte:sum(dF)+sum(dFL)},
       };
     });
     res["All"]={
-      pm:  {fte:DIVS.reduce((s,d)=>s+res[d].pm.fte,0),  fl:DIVS.reduce((s,d)=>s+res[d].pm.fl,0),  total:DIVS.reduce((s,d)=>s+res[d].pm.total,0),  efte:DIVS.reduce((s,d)=>s+res[d].pm.efte,0)},
-      des: {fte:DIVS.reduce((s,d)=>s+res[d].des.fte,0), fl:DIVS.reduce((s,d)=>s+res[d].des.fl,0), total:DIVS.reduce((s,d)=>s+res[d].des.total,0), efteFTE:DIVS.reduce((s,d)=>s+res[d].des.efteFTE,0), efteFL:DIVS.reduce((s,d)=>s+res[d].des.efteFL,0), efte:DIVS.reduce((s,d)=>s+res[d].des.efte,0)},
+      pm:  {fte:DIVS.reduce((s,d)=>s+res[d].pm.fte,0), fl:DIVS.reduce((s,d)=>s+res[d].pm.fl,0), total:DIVS.reduce((s,d)=>s+res[d].pm.total,0), efte:DIVS.reduce((s,d)=>s+res[d].pm.efte,0)},
+      des: {fte:DIVS.reduce((s,d)=>s+res[d].des.fte,0),fl:DIVS.reduce((s,d)=>s+res[d].des.fl,0),total:DIVS.reduce((s,d)=>s+res[d].des.total,0),efteFTE:DIVS.reduce((s,d)=>s+res[d].des.efteFTE,0),efteFL:DIVS.reduce((s,d)=>s+res[d].des.efteFL,0),efte:DIVS.reduce((s,d)=>s+res[d].des.efte,0)},
     };
     return res;
-  },[capacityRoster, WD]);
+  },[capacityRoster,WD]);
 
   const activePools = useMemo(()=>{
     const res={};
@@ -432,7 +408,6 @@ export default function App() {
     return res;
   },[poolsByDiv,WD,utilPM,utilDes]);
 
-  // SLA map (for SLA calc tab)
   const calcSlaMap = useMemo(()=>{
     const m={};
     PT_BASE.forEach(pt=>{
@@ -445,18 +420,12 @@ export default function App() {
     return m;
   },[calcCplx,calcAssetBand,eanBand,syndCplx,clientDays,slaOv]);
 
-  // Mix analysis
   const mixAnalysis = useMemo(()=>DIVS.map(div=>{
     let tPM=0,tDes=0,tProj=0,tAssets=0;
     const rows=mix.map(m=>{
       const pt=PT.find(p=>p.id===m.id);
-      const cnt=m[div]||0;
-      const assets=m[ASSET_KEY[div]]||0;
-      const sla=calcSlaMap[m.id];
-      tPM+=(sla?.pmDays||0)*cnt;
-      tDes+=(sla?.desDays||0)*cnt;
-      tProj+=cnt;
-      tAssets+=assets*cnt;
+      const cnt=m[div]||0, assets=m[ASSET_KEY[div]]||0, sla=calcSlaMap[m.id];
+      tPM+=(sla?.pmDays||0)*cnt; tDes+=(sla?.desDays||0)*cnt; tProj+=cnt; tAssets+=assets*cnt;
       return{id:m.id,label:pt?.label||m.id,count:cnt,assets:assets*cnt,color:pt?.color||"#666",autoEligible:m.autoEligible};
     });
     return{div,rows,tPM,tDes,tProj,tAssets};
@@ -471,22 +440,19 @@ export default function App() {
   const rag = u => u<=85?{dot:"🟢",bg:"bg-green-50",brd:"border-green-200",tx:"text-green-700",bar:"bg-green-500"}
                   :u<=100?{dot:"🟡",bg:"bg-amber-50",brd:"border-amber-200",tx:"text-amber-700",bar:"bg-amber-400"}
                   :       {dot:"🔴",bg:"bg-red-50",  brd:"border-red-200",  tx:"text-red-700",  bar:"bg-red-500"};
-
-  const getA = d => d==="All"?combined:(mixAnalysis.find(x=>x.div===d)||combined);
   const uc   = (d,a) => a>0?Math.round((d/a)*100):0;
-
+  const getA = d => d==="All"?combined:(mixAnalysis.find(x=>x.div===d)||combined);
   const cur=getA(divFilter), ap=activePools[divFilter]||activePools["All"];
   const uPM=uc(cur.tPM,ap.pm), uDes=uc(cur.tDes,ap.des);
 
-  const globalHC   = poolsByDiv["All"];
-  const totalPMs   = globalHC.pm.efte || 0;
-  const fteDes     = capacityRoster.filter(p=>p.role==="Integrated Designer"&&p.type==="FTE").length;
-  const flDes      = capacityRoster.filter(p=>p.role==="Integrated Designer"&&p.type==="Freelance").length;
-  const ftePM      = capacityRoster.filter(p=>p.role==="Project Manager"&&p.type==="FTE").length;
-  const flPM       = capacityRoster.filter(p=>p.role==="Project Manager"&&p.type==="Freelance").length;
-  const manualCap  = Math.round((globalHC.des.efte||0)*21*(utilDes/100)*manualRate);
+  const globalHC  = poolsByDiv["All"];
+  const totalPMs  = globalHC.pm.efte||0;
+  const fteDes    = capacityRoster.filter(p=>p.role==="Integrated Designer"&&p.type==="FTE").length;
+  const flDes     = capacityRoster.filter(p=>p.role==="Integrated Designer"&&p.type==="Freelance").length;
+  const ftePM     = capacityRoster.filter(p=>p.role==="Project Manager"&&p.type==="FTE").length;
+  const flPM      = capacityRoster.filter(p=>p.role==="Project Manager"&&p.type==="Freelance").length;
+  const manualCap = Math.round((globalHC.des.efte||0)*21*(utilDes/100)*manualRate);
 
-  // Monthly capacity (assets)
   const monthlyCap = useMemo(()=>FM.map(fm=>{
     const ua=autoEnabled&&autoScenario==="with";
     const lr=ua?blendedRate("LLD",fm.month,autoConfig,autoQCRate,manualRate):manualRate;
@@ -506,24 +472,18 @@ export default function App() {
       preAutoCapacity:anyAuto?null:manT, postAutoCapacity:anyAuto?autoT:null};
   }),[poolsByDiv,utilDes,autoEnabled,autoScenario,autoConfig,autoQCRate,manualRate]);
 
-  // PM project capacity vs Oliver forecast — the key new analysis
+  // ── PM project capacity vs Oliver forecast ─────────────────────────────────
+  // FIX: division views now use division-specific PM count from poolsByDiv
   const pmAnalysis = useMemo(()=>FM.map(fm=>{
-    // Your team's capacity
     const teamCap = Math.round(totalPMs * projectsPerPM * (utilPM/100));
-    // Oliver forecast (monthly = weekly × weeks)
     const demand = fm.monthlyForecast;
-    // Oliver's own PM capacity from the forecast file (monthly = weekly × weeks)
-    const oliverPermCap = fm.permPMMonthly;
-    const oliverFlyCap  = fm.flyPMMonthly;
-    const oliverTotalCap = oliverPermCap + oliverFlyCap;
-    // Coverage ratios
+    const oliverTotalCap = fm.permPMMonthly + fm.flyPMMonthly;
     const teamCoverPct   = demand>0?Math.round((teamCap/demand)*100):0;
     const oliverCoverPct = demand>0?Math.round((oliverTotalCap/demand)*100):0;
-    // Gap vs team capacity
-    const teamGap     = teamCap - demand;
-    const teamReqPerPM = totalPMs>0 ? (demand/totalPMs).toFixed(1) : "—";
-    return { ...fm, teamCap, demand, oliverPermCap, oliverFlyCap, oliverTotalCap, teamCoverPct, oliverCoverPct, teamGap, teamReqPerPM };
-  }),[totalPMs, projectsPerPM, utilPM]);
+    const teamGap = teamCap - demand;
+    const teamReqPerPM = totalPMs>0?(demand/totalPMs).toFixed(1):"—";
+    return{...fm, teamCap, demand, oliverTotalCap, teamCoverPct, oliverCoverPct, teamGap, teamReqPerPM};
+  }),[totalPMs,projectsPerPM,utilPM]);
 
   const forecastChartData = FM.map((fm,i)=>{
     const a=actuals[i], mc=monthlyCap[i];
@@ -545,21 +505,17 @@ export default function App() {
   const divSummaryData = DIVS.map(div=>{const a=mixAnalysis.find(x=>x.div===div),p=activePools[div];return{name:div,Projects:a.tProj,Assets:Math.round(a.tAssets),PMUtil:uc(a.tPM,p.pm),DesUtil:uc(a.tDes,p.des)};});
   const calcPt = PT.find(p=>p.id===calcType);
   const calcSla = calcSlaMap[calcType];
-
   const tmFiltered = useMemo(()=>roster.filter(p=>{
-    if(tmDiv!=="All"&&p.division!==tmDiv)return false;
-    if(tmType!=="All"&&p.type!==tmType)return false;
-    if(tmRole!=="All"&&p.role!==tmRole)return false;
-    if(tmSearch&&!p.name.toLowerCase().includes(tmSearch.toLowerCase()))return false;
+    if(tmDiv!=="All"&&p.division!==tmDiv) return false;
+    if(tmType!=="All"&&p.type!==tmType) return false;
+    if(tmRole!=="All"&&p.role!==tmRole) return false;
+    if(tmSearch&&!p.name.toLowerCase().includes(tmSearch.toLowerCase())) return false;
     return true;
   }),[roster,tmSearch,tmDiv,tmType,tmRole]);
-
+  const updateActualFn = (i,field,val)=>setActuals(prev=>prev.map((a,idx)=>idx===i?{...a,[field]:Math.max(0,parseInt(val)||0)}:a));
+  const DIV_PROJ_KEY = {LDB:"ldbProj",PPD:"ppdProj",LLD:"lldProj"};
   const pendingStarters = useMemo(()=>capacityRoster.filter(p=>p.startDate&&p.startDate!=="now"&&new Date(p.startDate)>new Date()).sort((a,b)=>new Date(a.startDate)-new Date(b.startDate)),[capacityRoster]);
   const pendingLeavers  = useMemo(()=>capacityRoster.filter(p=>p.endDate&&p.endDate!=="never"&&new Date(p.endDate)>new Date()).sort((a,b)=>new Date(a.endDate)-new Date(b.endDate)),[capacityRoster]);
-  const DIV_PROJ_KEY = {LDB:"ldbProj",PPD:"ppdProj",LLD:"lldProj"};
-
-  const monthlyProj  = Math.round(combined.tProj/period.months);
-  const monthlyAssets= Math.round(combined.tAssets/period.months);
 
   return (
     <div className="bg-gray-50 min-h-screen font-sans">
@@ -606,16 +562,10 @@ export default function App() {
           </div>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3 mb-3">
-          <div>
-            <label className="text-xs font-semibold text-gray-700 block mb-0.5">PM Util: {utilPM}%</label>
-            <input type="range" min={60} max={95} value={utilPM} onChange={e=>{setUtilPM(+e.target.value);saveSettings({utilPM:+e.target.value});}} className="w-full accent-blue-600"/>
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-gray-700 block mb-0.5">Designer Util: {utilDes}%</label>
-            <input type="range" min={60} max={95} value={utilDes} onChange={e=>{setUtilDes(+e.target.value);saveSettings({utilDes:+e.target.value});}} className="w-full accent-purple-600"/>
-          </div>
+          <div><label className="text-xs font-semibold text-gray-700 block mb-0.5">PM Util: {utilPM}%</label><input type="range" min={60} max={95} value={utilPM} onChange={e=>{setUtilPM(+e.target.value);saveSettings({utilPM:+e.target.value});}} className="w-full accent-blue-600"/></div>
+          <div><label className="text-xs font-semibold text-gray-700 block mb-0.5">Designer Util: {utilDes}%</label><input type="range" min={60} max={95} value={utilDes} onChange={e=>{setUtilDes(+e.target.value);saveSettings({utilDes:+e.target.value});}} className="w-full accent-purple-600"/></div>
           <div className="bg-blue-50 border border-blue-200 rounded-xl px-3 py-2">
-            <label className="text-xs font-bold text-blue-700 block mb-0.5">Concurrent Projects/PM: <span className="text-blue-900 font-black">{projectsPerPM}</span></label>
+            <label className="text-xs font-bold text-blue-700 block mb-0.5">Concurrent Proj/PM: <span className="font-black">{projectsPerPM}</span></label>
             <input type="range" min={3} max={30} value={projectsPerPM} onChange={e=>{setProjectsPerPM(+e.target.value);saveSettings({projectsPerPM:+e.target.value});}} className="w-full accent-blue-600"/>
             <div className="flex justify-between text-xs text-blue-400 mt-0.5"><span>3</span><span>15</span><span>30</span></div>
             <p className="text-xs text-blue-600 mt-1">Team PM cap: <strong>{Math.round(totalPMs*projectsPerPM*(utilPM/100)).toLocaleString()}/mo</strong></p>
@@ -634,7 +584,7 @@ export default function App() {
         </div>
         <div className="grid grid-cols-3 gap-3">
           {DIVS.map(div=>{
-            const hc=poolsByDiv[div], pools=activePools[div], mc=monthlyCap[0];
+            const hc=poolsByDiv[div], mc=monthlyCap[0];
             const dc=div==="LDB"?mc?.ldb:div==="PPD"?mc?.ppd:mc?.lld;
             return(
               <div key={div} className="rounded-xl border border-gray-200 bg-gray-50 p-3">
@@ -671,45 +621,19 @@ export default function App() {
           <div className="space-y-4">
             <div className="grid grid-cols-4 gap-3">
               {[{label:`Projects (${divFilter})`,val:cur.tProj,unit:"projects",bg:"bg-blue-600 text-white"},{label:`Assets (${divFilter})`,val:cur.tAssets.toLocaleString(),unit:"assets",bg:"bg-indigo-600 text-white"},{label:`PM Util — ${divFilter}`,val:`${uPM}%`,unit:rag(uPM).dot,bg:`${rag(uPM).bg} ${rag(uPM).tx} border ${rag(uPM).brd}`},{label:`Designer Util — ${divFilter}`,val:`${uDes}%`,unit:rag(uDes).dot,bg:`${rag(uDes).bg} ${rag(uDes).tx} border ${rag(uDes).brd}`}].map(k=>(
-                <div key={k.label} className={`rounded-xl p-3 text-center ${k.bg}`}>
-                  <p className="text-xs font-semibold opacity-80 leading-tight">{k.label}</p>
-                  <p className="text-2xl font-black">{k.val}</p>
-                  <p className="text-xs opacity-70">{k.unit}</p>
-                </div>
+                <div key={k.label} className={`rounded-xl p-3 text-center ${k.bg}`}><p className="text-xs font-semibold opacity-80 leading-tight">{k.label}</p><p className="text-2xl font-black">{k.val}</p><p className="text-xs opacity-70">{k.unit}</p></div>
               ))}
             </div>
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
               <h2 className="text-sm font-bold text-gray-800 mb-4">Utilisation — {divFilter} · {period.label}</h2>
               {[{label:"Project Managers",demand:cur.tPM,avail:ap.pm,u:uPM,hc:poolsByDiv[divFilter==="All"?"All":divFilter].pm},{label:"Integrated Designers",demand:cur.tDes,avail:ap.des,u:uDes,hc:poolsByDiv[divFilter==="All"?"All":divFilter].des}].map(r=>{
                 const rg=rag(r.u);
-                return(
-                  <div key={r.label} className="mb-5">
-                    <div className="flex justify-between mb-1"><span className="text-sm font-semibold text-gray-700">{r.label} <span className="text-xs text-gray-400">({r.hc.total} · {r.avail}d avail)</span></span><span className={`text-sm font-black ${rg.tx}`}>{rg.dot} {r.u}%</span></div>
-                    <div className="w-full bg-gray-100 rounded-full h-3"><div className={`h-3 rounded-full ${rg.bar}`} style={{width:`${Math.min(r.u,100)}%`}}/></div>
-                    {r.u>100&&<p className="text-xs text-red-600 mt-0.5">⚠️ Over by {r.u-100}%</p>}
-                  </div>
-                );
+                return(<div key={r.label} className="mb-5"><div className="flex justify-between mb-1"><span className="text-sm font-semibold text-gray-700">{r.label} <span className="text-xs text-gray-400">({r.hc.total} · {r.avail}d avail)</span></span><span className={`text-sm font-black ${rg.tx}`}>{rg.dot} {r.u}%</span></div><div className="w-full bg-gray-100 rounded-full h-3"><div className={`h-3 rounded-full ${rg.bar}`} style={{width:`${Math.min(r.u,100)}%`}}/></div>{r.u>100&&<p className="text-xs text-red-600 mt-0.5">⚠️ Over by {r.u-100}%</p>}</div>);
               })}
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-                <h2 className="text-sm font-bold text-gray-800 mb-3">Projects & Assets by Division</h2>
-                <ResponsiveContainer width="100%" height={200}>
-                  <BarChart data={divSummaryData} margin={{top:5,right:10,left:0,bottom:5}}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/><XAxis dataKey="name" tick={{fontSize:12}}/><YAxis tick={{fontSize:11}}/>
-                    <Tooltip/><Legend/><Bar dataKey="Projects" fill="#3b82f6" radius={[3,3,0,0]}/><Bar dataKey="Assets" fill="#8b5cf6" radius={[3,3,0,0]}/>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-                <h2 className="text-sm font-bold text-gray-800 mb-3">Utilisation % by Division</h2>
-                <ResponsiveContainer width="100%" height={200}>
-                  <BarChart data={divSummaryData} margin={{top:5,right:10,left:0,bottom:5}}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/><XAxis dataKey="name" tick={{fontSize:12}}/><YAxis tick={{fontSize:11}} unit="%"/>
-                    <Tooltip formatter={v=>`${v}%`}/><Legend/><Bar dataKey="PMUtil" name="PM %" fill="#3b82f6" radius={[3,3,0,0]}/><Bar dataKey="DesUtil" name="Designer %" fill="#8b5cf6" radius={[3,3,0,0]}/>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
+              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5"><h2 className="text-sm font-bold text-gray-800 mb-3">Projects & Assets by Division</h2><ResponsiveContainer width="100%" height={200}><BarChart data={divSummaryData} margin={{top:5,right:10,left:0,bottom:5}}><CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/><XAxis dataKey="name" tick={{fontSize:12}}/><YAxis tick={{fontSize:11}}/><Tooltip/><Legend/><Bar dataKey="Projects" fill="#3b82f6" radius={[3,3,0,0]}/><Bar dataKey="Assets" fill="#8b5cf6" radius={[3,3,0,0]}/></BarChart></ResponsiveContainer></div>
+              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5"><h2 className="text-sm font-bold text-gray-800 mb-3">Utilisation % by Division</h2><ResponsiveContainer width="100%" height={200}><BarChart data={divSummaryData} margin={{top:5,right:10,left:0,bottom:5}}><CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/><XAxis dataKey="name" tick={{fontSize:12}}/><YAxis tick={{fontSize:11}} unit="%"/><Tooltip formatter={v=>`${v}%`}/><Legend/><Bar dataKey="PMUtil" name="PM %" fill="#3b82f6" radius={[3,3,0,0]}/><Bar dataKey="DesUtil" name="Designer %" fill="#8b5cf6" radius={[3,3,0,0]}/></BarChart></ResponsiveContainer></div>
             </div>
           </div>
         )}
@@ -717,36 +641,24 @@ export default function App() {
         {/* ══ FORECAST ══ */}
         {activeTab==="📈 Forecast"&&(
           <div className="space-y-4">
-            {/* Banner */}
             <div className="bg-gray-900 text-white rounded-xl px-4 py-3 flex flex-wrap gap-4 items-center">
               <div>
                 <p className="text-xs text-gray-400 uppercase font-bold mb-0.5">Data Source</p>
-                <p className="text-xs text-gray-300">Oliver tab · GRAND TOTAL LLD 50% March · Jan–Dec 2026 · Mar LLD = 5,348</p>
-                <p className="text-xs text-gray-500 mt-0.5">Monthly projects = Oliver weekly × weeks in month · PM cap from Oliver lines + your team slider</p>
+                <p className="text-xs text-gray-300">Oliver tab · GRAND TOTAL LLD 50% March · Jan–Dec 2026</p>
+                <p className="text-xs text-gray-500 mt-0.5">Monthly projects = Oliver weekly × weeks · PM cap from Oliver lines + team slider</p>
               </div>
               <div className="flex gap-3 ml-auto flex-wrap">
                 {[{l:"Manual cap/mo",v:manualCap.toLocaleString(),c:"orange"},{l:"Apr cap",v:(monthlyCap[3]?.total||0).toLocaleString(),c:"green"},{l:"Jun cap",v:(monthlyCap[5]?.total||0).toLocaleString(),c:"green"},{l:"Team PM cap/mo",v:Math.round(totalPMs*projectsPerPM*(utilPM/100)).toLocaleString(),c:"blue"}].map(s=>(
-                  <div key={s.l} className="bg-gray-800 rounded-lg px-3 py-1.5 text-center">
-                    <p className="text-xs text-gray-400">{s.l}</p>
-                    <p className={`text-sm font-black text-${s.c}-400`}>{s.v}</p>
-                  </div>
+                  <div key={s.l} className="bg-gray-800 rounded-lg px-3 py-1.5 text-center"><p className="text-xs text-gray-400">{s.l}</p><p className={`text-sm font-black text-${s.c}-400`}>{s.v}</p></div>
                 ))}
               </div>
             </div>
-
-            {/* Scenario + view toggles */}
             <div className="flex items-center gap-3 flex-wrap">
               <p className="text-xs font-bold text-gray-500 uppercase">Scenario:</p>
-              {[{l:"🤖 With Automation",v:"with"},{l:"Manual Baseline",v:"without"}].map(s=>(
-                <button key={s.v} onClick={()=>setAutoScenario(s.v)} className={`px-4 py-2 text-xs font-bold rounded-lg border ${autoScenario===s.v?"bg-gray-900 text-white border-gray-900":"bg-white text-gray-600 border-gray-300"}`}>{s.l}</button>
-              ))}
+              {[{l:"🤖 With Automation",v:"with"},{l:"Manual Baseline",v:"without"}].map(s=>(<button key={s.v} onClick={()=>setAutoScenario(s.v)} className={`px-4 py-2 text-xs font-bold rounded-lg border ${autoScenario===s.v?"bg-gray-900 text-white border-gray-900":"bg-white text-gray-600 border-gray-300"}`}>{s.l}</button>))}
               <p className="text-xs font-bold text-gray-500 uppercase ml-4">Asset view:</p>
-              {["Total","LDB","PPD","LLD"].map(d=>(
-                <button key={d} onClick={()=>setForecastDiv(d)} className={`px-3 py-1 rounded-full text-xs font-bold ${forecastDiv===d?"text-white":"bg-white text-gray-600 border border-gray-300"}`} style={forecastDiv===d?{background:d==="Total"?"#1f2937":DIV_COLORS[d]}:{}}>{d}</button>
-              ))}
+              {["Total","LDB","PPD","LLD"].map(d=>(<button key={d} onClick={()=>setForecastDiv(d)} className={`px-3 py-1 rounded-full text-xs font-bold ${forecastDiv===d?"text-white":"bg-white text-gray-600 border border-gray-300"}`} style={forecastDiv===d?{background:d==="Total"?"#1f2937":DIV_COLORS[d]}:{}}>{d}</button>))}
             </div>
-
-            {/* Asset chart */}
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
               <h2 className="text-sm font-bold text-gray-800 mb-1">Asset Volume — {forecastDiv==="Total"?"All Divisions":forecastDiv} · Jan–Dec 2026</h2>
               <p className="text-xs text-gray-400 mb-3">{autoScenario==="with"?`🤖 Capacity steps up at go-live · Manual: ${manualRate}/day → QC: ${autoQCRate}/day`:`Manual baseline — ${manualRate}/day`}</p>
@@ -763,25 +675,26 @@ export default function App() {
               </ResponsiveContainer>
             </div>
 
-            {/* ── PROJECT VOLUME: Oliver forecast vs YOUR team capacity ── */}
+            {/* ── PROJECT VOLUME CARD ── */}
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
               <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
                 <div>
                   <h2 className="text-sm font-bold text-gray-800">Project Volume — Oliver Forecast vs PM Capacity</h2>
                   <p className="text-xs text-gray-400 mt-0.5">
-                    Monthly demand = Oliver weekly projects (line 31) × weeks in month &nbsp;·&nbsp;
-                    Oliver PM cap = Oliver perm + flying PM capacity lines (monthly) &nbsp;·&nbsp;
-                    Your team cap = {Math.round(totalPMs)} PMs × {projectsPerPM} concurrent × {utilPM}% util
+                    Monthly demand = Oliver weekly (line 31) × weeks &nbsp;·&nbsp;
+                    Oliver PM cap = perm + flying (from file, monthly) &nbsp;·&nbsp;
+                    {projView==="Total"
+                      ? `Your team cap = ${Math.round(totalPMs)} PMs × ${projectsPerPM} × ${utilPM}% util`
+                      : `Your team cap = ${Math.round(poolsByDiv[projView]?.pm.efte||0)} ${projView} PMs × ${projectsPerPM} × ${utilPM}% util`
+                    }
                   </p>
                 </div>
                 <div className="flex gap-1">
-                  {["Total","LDB","PPD","LLD"].map(d=>(
-                    <button key={d} onClick={()=>setProjView(d)} className={`px-2.5 py-1 text-xs rounded-full font-bold ${projView===d?"text-white":"bg-gray-100 text-gray-600"}`} style={projView===d?{background:d==="Total"?"#1f2937":DIV_COLORS[d]}:{}}>{d}</button>
-                  ))}
+                  {["Total","LDB","PPD","LLD"].map(d=>(<button key={d} onClick={()=>setProjView(d)} className={`px-2.5 py-1 text-xs rounded-full font-bold ${projView===d?"text-white":"bg-gray-100 text-gray-600"}`} style={projView===d?{background:d==="Total"?"#1f2937":DIV_COLORS[d]}:{}}>{d}</button>))}
                 </div>
               </div>
 
-              {/* Info box — explains the two capacity lines */}
+              {/* Info boxes — update PM count based on view */}
               <div className="grid grid-cols-3 gap-3 mb-4">
                 <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-center">
                   <p className="text-xs text-blue-500 font-semibold">Oliver Forecast Demand</p>
@@ -793,18 +706,30 @@ export default function App() {
                   <p className="text-lg font-black text-green-700">Perm + Flying (from file)</p>
                   <p className="text-xs text-green-400">Oliver's own capacity projection</p>
                 </div>
+                {/* FIX: PM count updates per division view */}
                 <div className="bg-purple-50 border border-purple-100 rounded-xl p-3 text-center">
                   <p className="text-xs text-purple-600 font-semibold">Your Team Capacity</p>
-                  <p className="text-lg font-black text-purple-700">{Math.round(totalPMs)} PMs × {projectsPerPM}</p>
+                  <p className="text-lg font-black text-purple-700">
+                    {projView==="Total"
+                      ? `${Math.round(totalPMs)} PMs × ${projectsPerPM}`
+                      : `${Math.round(poolsByDiv[projView]?.pm.efte||0)} ${projView} PMs × ${projectsPerPM}`
+                    }
+                  </p>
                   <p className="text-xs text-purple-400">adjust slider to model scenarios</p>
                 </div>
               </div>
 
               {projView==="Total"?(
                 <>
-                  {/* Column headers */}
-                  <div className="grid gap-1 mb-1 text-xs font-bold text-gray-400 uppercase" style={{gridTemplateColumns:"3rem 2rem 4rem 4rem 4rem 4rem 3rem 3rem 3.5rem"}}>
-                    <p>Month</p><p className="text-center">Wks</p><p className="text-right text-blue-500">Demand</p><p className="text-right text-green-500">Oliver cap</p><p className="text-right text-green-400">Oliver %</p><p className="text-right text-purple-500">Team cap</p><p className="text-right text-purple-400">Team %</p><p className="text-right">Req/PM</p><p className="text-right">Gap</p>
+                  <div className="grid gap-1 mb-1 text-xs font-bold text-gray-400 uppercase" style={{gridTemplateColumns:"3rem 2rem 4.5rem 4.5rem 3.5rem 4.5rem 3.5rem 3.5rem 4rem"}}>
+                    <p>Month</p><p className="text-center">Wks</p>
+                    <p className="text-right text-blue-500">Demand</p>
+                    <p className="text-right text-green-500">Oliver cap</p>
+                    <p className="text-right text-green-400">Oliver%</p>
+                    <p className="text-right text-purple-500">Team cap</p>
+                    <p className="text-right text-purple-400">Team%</p>
+                    <p className="text-right">Req/PM</p>
+                    <p className="text-right">Gap</p>
                   </div>
                   <div className="h-px bg-gray-100 mb-2"/>
                   <div className="space-y-2">
@@ -812,11 +737,10 @@ export default function App() {
                       const oliverRag=row.oliverCoverPct>=100?"text-green-600":row.oliverCoverPct>=75?"text-amber-600":"text-red-600";
                       const teamRag  =row.teamCoverPct>=100?"text-green-600":row.teamCoverPct>=75?"text-amber-600":"text-red-600";
                       const reqRag   =+row.teamReqPerPM>projectsPerPM?"text-red-600":+row.teamReqPerPM>projectsPerPM*0.85?"text-amber-500":"text-green-600";
-                      const barPct   = Math.min(row.teamCoverPct,200);
-                      const barC     = row.teamCoverPct>=100?"bg-green-500":row.teamCoverPct>=75?"bg-amber-400":"bg-red-400";
+                      const barC     =row.teamCoverPct>=100?"bg-green-500":row.teamCoverPct>=75?"bg-amber-400":"bg-red-400";
                       return(
                         <div key={row.month}>
-                          <div className="grid gap-1 items-center text-xs" style={{gridTemplateColumns:"3rem 2rem 4rem 4rem 4rem 4rem 3rem 3rem 3.5rem"}}>
+                          <div className="grid gap-1 items-center text-xs" style={{gridTemplateColumns:"3rem 2rem 4.5rem 4.5rem 3.5rem 4.5rem 3.5rem 3.5rem 4rem"}}>
                             <span className="font-semibold text-gray-700">{row.month}</span>
                             <span className="text-center text-gray-400">{row.weeksInMonth}w</span>
                             <span className="text-right font-black text-blue-700">{row.demand.toLocaleString()}</span>
@@ -825,68 +749,71 @@ export default function App() {
                             <span className="text-right font-semibold text-purple-600">{row.teamCap.toLocaleString()}</span>
                             <span className={`text-right font-bold ${teamRag}`}>{row.teamCoverPct}%</span>
                             <span className={`text-right font-bold ${reqRag}`}>{row.teamReqPerPM}</span>
-                            <span className={`text-right text-xs font-bold ${row.teamGap>=0?"text-green-600":"text-red-500"}`}>
-                              {row.teamGap>=0?`+${row.teamGap.toLocaleString()}`:row.teamGap.toLocaleString()}
-                            </span>
+                            <span className={`text-right font-bold ${row.teamGap>=0?"text-green-600":"text-red-500"}`}>{row.teamGap>=0?`+${row.teamGap.toLocaleString()}`:row.teamGap.toLocaleString()}</span>
                           </div>
                           <div className="w-full bg-gray-100 rounded h-1.5 mt-0.5">
-                            <div className={`h-1.5 rounded ${barC}`} style={{width:`${Math.min(barPct/2,100)}%`}}/>
+                            <div className={`h-1.5 rounded ${barC}`} style={{width:`${Math.min(row.teamCoverPct,100)}%`}}/>
                           </div>
                           {row.teamGap<0&&(
-                            <p className="text-xs text-red-500 text-right mt-0.5">
-                              Shortfall: {Math.abs(row.teamGap).toLocaleString()} projects · need ~{Math.ceil(Math.abs(row.teamGap)/projectsPerPM)} more PMs
-                            </p>
+                            <p className="text-xs text-red-500 text-right mt-0.5">Shortfall: {Math.abs(row.teamGap).toLocaleString()} · need ~{Math.ceil(Math.abs(row.teamGap)/projectsPerPM)} more PMs</p>
                           )}
                         </div>
                       );
                     })}
                   </div>
-                  {/* Legend */}
                   <div className="mt-3 pt-3 border-t border-gray-100 grid grid-cols-2 gap-3 text-xs">
                     <div className="space-y-1">
                       <p className="font-bold text-gray-600">Column guide</p>
                       <p><span className="font-semibold text-blue-600">Demand</span> = Oliver weekly × weeks (monthly total)</p>
-                      <p><span className="font-semibold text-green-600">Oliver cap</span> = Oliver perm + flying PM monthly capacity</p>
-                      <p><span className="font-semibold text-purple-600">Team cap</span> = your team × {projectsPerPM} concurrent × {utilPM}% util</p>
+                      <p><span className="font-semibold text-green-600">Oliver cap</span> = Oliver perm + flying PM capacity (monthly)</p>
+                      <p><span className="font-semibold text-purple-600">Team cap</span> = {Math.round(totalPMs)} PMs × {projectsPerPM} concurrent × {utilPM}% util</p>
                     </div>
                     <div className="space-y-1">
-                      <p className="font-bold text-gray-600">Key figures (Jun peak)</p>
+                      <p className="font-bold text-gray-600">Jun peak</p>
                       <p>Weekly demand: <strong className="text-blue-600">{FM[5].weeklyForecast} projects</strong></p>
-                      <p>Monthly demand: <strong className="text-blue-600">{FM[5].monthlyForecast.toLocaleString()} projects</strong> ({FM[5].weeksInMonth} weeks)</p>
-                      <p>Oliver PM cap: <strong className="text-green-600">{(FM[5].permPMMonthly+FM[5].flyPMMonthly).toLocaleString()}</strong> · Team cap: <strong className="text-purple-600">{Math.round(totalPMs*projectsPerPM*(utilPM/100)).toLocaleString()}</strong></p>
+                      <p>Monthly: <strong className="text-blue-600">{FM[5].monthlyForecast.toLocaleString()}</strong> ({FM[5].weeksInMonth} weeks)</p>
+                      <p>Oliver cap: <strong className="text-green-600">{(FM[5].permPMMonthly+FM[5].flyPMMonthly).toLocaleString()}</strong> · Team: <strong className="text-purple-600">{Math.round(totalPMs*projectsPerPM*(utilPM/100)).toLocaleString()}</strong></p>
                     </div>
                   </div>
                 </>
               ):(
-                // Division view
+                // ── DIVISION VIEW — FIX: uses division-specific PM count ──
                 <>
                   <div className="grid grid-cols-5 gap-1 mb-1 text-xs font-bold text-gray-400 uppercase">
-                    <p>Month</p><p className="text-right">Wkly</p><p className="text-right text-blue-500">Monthly</p><p className="text-right text-purple-500">Team cap</p><p className="text-right">Cover %</p>
+                    <p>Month</p><p className="text-right">Wkly/PM</p><p className="text-right text-blue-500">Monthly</p>
+                    <p className="text-right text-purple-500">Team cap</p><p className="text-right">Cover %</p>
                   </div>
                   <div className="h-px bg-gray-100 mb-2"/>
                   <div className="space-y-1.5">
                     {FM.map(row=>{
-                      const divShare = row.weeklyForecast>0?row[DIV_PROJ_KEY[projView]]/row.weeklyForecast:0;
+                      // FIX: use the PM count for THIS division only
+                      const divPMs = poolsByDiv[projView]?.pm.efte || 0;
                       const monthlyDiv = Math.round(row[DIV_PROJ_KEY[projView]] * row.weeksInMonth);
-                      const divTeamCap = Math.round(totalPMs * projectsPerPM * (utilPM/100) * divShare);
+                      const divTeamCap = Math.round(divPMs * projectsPerPM * (utilPM/100));
                       const pct = monthlyDiv>0?Math.round((divTeamCap/monthlyDiv)*100):0;
                       const ragTx=pct>=100?"text-green-600":pct>=75?"text-amber-600":"text-red-600";
                       const barC=pct>=100?"bg-green-500":pct>=75?"bg-amber-400":"bg-red-400";
+                      const reqPerPM = divPMs>0?(monthlyDiv/divPMs).toFixed(1):"—";
+                      const reqRag = +reqPerPM>projectsPerPM?"text-red-600":"text-green-600";
                       return(
                         <div key={row.month}>
                           <div className="grid grid-cols-5 gap-1 items-center text-xs">
                             <span className="font-semibold text-gray-700">{row.month}</span>
-                            <span className="text-right text-gray-400">{row[DIV_PROJ_KEY[projView]]}/wk</span>
+                            <span className={`text-right font-bold ${reqRag}`}>{row[DIV_PROJ_KEY[projView]]}/wk · {reqPerPM}/PM</span>
                             <span className="text-right font-black" style={{color:DIV_COLORS[projView]}}>{monthlyDiv.toLocaleString()}</span>
                             <span className="text-right font-semibold text-purple-600">{divTeamCap.toLocaleString()}</span>
                             <span className={`text-right font-bold ${ragTx}`}>{pct}%</span>
                           </div>
                           <div className="w-full bg-gray-100 rounded h-1 mt-0.5"><div className={`h-1 rounded ${barC}`} style={{width:`${Math.min(pct,100)}%`}}/></div>
+                          {divTeamCap<monthlyDiv&&<p className="text-xs text-red-500 text-right mt-0.5">Gap: {(monthlyDiv-divTeamCap).toLocaleString()} · need ~{Math.ceil((monthlyDiv-divTeamCap)/projectsPerPM)} more PMs</p>}
                         </div>
                       );
                     })}
                   </div>
-                  <p className="text-xs text-gray-400 mt-2">{projView} monthly = weekly × weeks · team cap = {projView} share of total PM capacity at {projectsPerPM} proj/PM</p>
+                  <p className="text-xs text-gray-400 mt-3">
+                    {projView} monthly = weekly × weeks · team cap = {Math.round(poolsByDiv[projView]?.pm.efte||0)} {projView} PMs × {projectsPerPM} proj/PM × {utilPM}% util
+                    · Req/PM = monthly demand ÷ {projView} PM count (red if above {projectsPerPM} concurrent threshold)
+                  </p>
                 </>
               )}
             </div>
@@ -895,10 +822,7 @@ export default function App() {
             <div className="grid grid-cols-3 gap-4">
               {[{div:"LDB",capKey:"capacityLdb"},{div:"PPD",capKey:"capacityPpd"},{div:"LLD",capKey:"capacityLld"}].map(({div,capKey})=>(
                 <div key={div} className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-black text-gray-900 text-sm">{div} — Asset Coverage</h3>
-                    <span className="text-xs px-2 py-0.5 rounded-full font-bold bg-green-100 text-green-700">🤖 {autoConfig[div].goLiveMonth}</span>
-                  </div>
+                  <div className="flex items-center justify-between mb-3"><h3 className="font-black text-gray-900 text-sm">{div} — Asset Coverage</h3><span className="text-xs px-2 py-0.5 rounded-full font-bold bg-green-100 text-green-700">🤖 {autoConfig[div].goLiveMonth}</span></div>
                   <div className="grid grid-cols-4 gap-1 mb-1 text-xs font-bold text-gray-400 uppercase"><p>Mo</p><p className="text-right">Target</p><p className="text-right">Cap</p><p className="text-right">%</p></div>
                   <div className="h-px bg-gray-100 mb-2"/>
                   <div className="space-y-1.5">
@@ -909,12 +833,7 @@ export default function App() {
                       const barC=pct>=100?"bg-green-500":pct>=75?"bg-amber-400":"bg-red-400";
                       return(
                         <div key={row.month}>
-                          <div className="grid grid-cols-4 gap-1 items-center text-xs">
-                            <span className="font-semibold text-gray-700 flex items-center gap-1">{row.month}{isAuto&&autoScenario==="with"&&<span className="text-green-500 text-xs">🤖</span>}</span>
-                            <span className="text-right text-gray-500">{target.toLocaleString()}</span>
-                            <span className="text-right font-semibold text-gray-700">{cap.toLocaleString()}</span>
-                            <span className={`text-right font-bold ${ragTx}`}>{pct}%</span>
-                          </div>
+                          <div className="grid grid-cols-4 gap-1 items-center text-xs"><span className="font-semibold text-gray-700 flex items-center gap-1">{row.month}{isAuto&&autoScenario==="with"&&<span className="text-green-500 text-xs">🤖</span>}</span><span className="text-right text-gray-500">{target.toLocaleString()}</span><span className="text-right font-semibold text-gray-700">{cap.toLocaleString()}</span><span className={`text-right font-bold ${ragTx}`}>{pct}%</span></div>
                           <div className="w-full bg-gray-100 rounded h-1 mt-0.5"><div className={`h-1 rounded ${barC}`} style={{width:`${Math.min(pct,100)}%`}}/></div>
                         </div>
                       );
@@ -926,48 +845,30 @@ export default function App() {
 
             {/* Monthly detail table */}
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-bold text-gray-800">Monthly Detail — Asset Forecast vs Capacity vs Actuals</h2>
-                <p className="text-xs text-gray-400">Enter actuals in amber cells</p>
-              </div>
+              <div className="flex items-center justify-between mb-3"><h2 className="text-sm font-bold text-gray-800">Monthly Detail — Asset Forecast vs Capacity vs Actuals</h2><p className="text-xs text-gray-400">Enter actuals in amber cells</p></div>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs" style={{tableLayout:"fixed"}}>
                   <colgroup><col style={{width:"44px"}}/><col style={{width:"66px"}}/><col style={{width:"58px"}}/><col style={{width:"56px"}}/><col style={{width:"56px"}}/><col style={{width:"56px"}}/><col style={{width:"56px"}}/><col style={{width:"56px"}}/><col style={{width:"56px"}}/><col style={{width:"28px"}}/></colgroup>
                   <thead>
-                    <tr className="text-gray-500 uppercase text-xs bg-gray-50">
-                      <th className="py-2 text-left pl-2">Mo</th>
-                      <th className="py-2 text-center bg-blue-50 text-blue-600" colSpan={2}>Total</th>
-                      <th className="py-2 text-center" style={{background:DIV_COLORS.LDB+"22",color:DIV_COLORS.LDB}} colSpan={2}>LDB</th>
-                      <th className="py-2 text-center" style={{background:DIV_COLORS.PPD+"22",color:DIV_COLORS.PPD}} colSpan={2}>PPD</th>
-                      <th className="py-2 text-center" style={{background:DIV_COLORS.LLD+"22",color:DIV_COLORS.LLD}} colSpan={2}>LLD</th>
-                      <th></th>
-                    </tr>
-                    <tr className="text-gray-400 text-xs border-b border-gray-200 bg-gray-50">
-                      <th className="py-1 pl-2"></th>
-                      <th className="py-1 text-center">Tgt</th><th className="py-1 text-center text-amber-500">Act</th>
-                      <th className="py-1 text-center">Tgt</th><th className="py-1 text-center text-amber-500">Act</th>
-                      <th className="py-1 text-center">Tgt</th><th className="py-1 text-center text-amber-500">Act</th>
-                      <th className="py-1 text-center">Tgt</th><th className="py-1 text-center text-amber-500">Act</th>
-                      <th></th>
-                    </tr>
+                    <tr className="text-gray-500 uppercase text-xs bg-gray-50"><th className="py-2 text-left pl-2">Mo</th><th className="py-2 text-center bg-blue-50 text-blue-600" colSpan={2}>Total</th><th className="py-2 text-center" style={{background:DIV_COLORS.LDB+"22",color:DIV_COLORS.LDB}} colSpan={2}>LDB</th><th className="py-2 text-center" style={{background:DIV_COLORS.PPD+"22",color:DIV_COLORS.PPD}} colSpan={2}>PPD</th><th className="py-2 text-center" style={{background:DIV_COLORS.LLD+"22",color:DIV_COLORS.LLD}} colSpan={2}>LLD</th><th></th></tr>
+                    <tr className="text-gray-400 text-xs border-b border-gray-200 bg-gray-50"><th className="py-1 pl-2"></th><th className="py-1 text-center">Tgt</th><th className="py-1 text-center text-amber-500">Act</th><th className="py-1 text-center">Tgt</th><th className="py-1 text-center text-amber-500">Act</th><th className="py-1 text-center">Tgt</th><th className="py-1 text-center text-amber-500">Act</th><th className="py-1 text-center">Tgt</th><th className="py-1 text-center text-amber-500">Act</th><th></th></tr>
                   </thead>
                   <tbody>
                     {forecastChartData.map((row,i)=>{
-                      const a=actuals[i];
-                      const cov=Math.round((row.capacityTotal/row.gt)*100);
+                      const a=actuals[i], cov=Math.round((row.capacityTotal/row.gt)*100);
                       const rd=cov>=200?"🟢🟢":cov>=100?"🟢":cov>=75?"🟡":"🔴";
                       const ap2=a.actualAssets?Math.round((a.actualAssets/row.gt)*100):null;
                       return(
                         <tr key={row.month} className={`border-t border-gray-100 hover:bg-gray-50 ${row.anyAuto&&autoScenario==="with"?"bg-green-50":""}`}>
                           <td className="py-2 pl-2 font-bold text-gray-900">{row.month}{row.anyAuto&&autoScenario==="with"&&<span className="ml-1 text-green-500 text-xs">🤖</span>}</td>
                           <td className="py-2 text-center bg-blue-50"><div className="font-semibold text-blue-700 text-xs">{row.gt.toLocaleString()}</div><div className={`text-xs font-bold ${cov>=100?"text-green-600":cov>=75?"text-amber-500":"text-red-500"}`}>{cov}%</div></td>
-                          <td className="py-2"><input type="number" min="0" value={a.actualAssets||""} onChange={e=>updateActual(i,"actualAssets",e.target.value)} placeholder="—" className="w-full text-center text-xs font-bold border border-amber-300 rounded px-1 py-1 bg-amber-50 text-amber-700 focus:outline-none"/>{ap2!==null&&<div className="text-xs font-bold text-amber-600 text-center">{ap2}%</div>}</td>
+                          <td className="py-2"><input type="number" min="0" value={a.actualAssets||""} onChange={e=>updateActualFn(i,"actualAssets",e.target.value)} placeholder="—" className="w-full text-center text-xs font-bold border border-amber-300 rounded px-1 py-1 bg-amber-50 text-amber-700 focus:outline-none"/>{ap2!==null&&<div className="text-xs font-bold text-amber-600 text-center">{ap2}%</div>}</td>
                           <td className="py-2 text-center" style={{background:DIV_COLORS.LDB+"0d"}}><span className="font-semibold text-xs" style={{color:DIV_COLORS.LDB}}>{row.ldb.toLocaleString()}</span></td>
-                          <td className="py-2"><input type="number" min="0" value={a.actualLdb||""} onChange={e=>updateActual(i,"actualLdb",e.target.value)} placeholder="—" className="w-full text-center text-xs font-bold border border-amber-300 rounded px-1 py-1 bg-amber-50 text-amber-700 focus:outline-none"/></td>
+                          <td className="py-2"><input type="number" min="0" value={a.actualLdb||""} onChange={e=>updateActualFn(i,"actualLdb",e.target.value)} placeholder="—" className="w-full text-center text-xs font-bold border border-amber-300 rounded px-1 py-1 bg-amber-50 text-amber-700 focus:outline-none"/></td>
                           <td className="py-2 text-center" style={{background:DIV_COLORS.PPD+"0d"}}><span className="font-semibold text-xs" style={{color:DIV_COLORS.PPD}}>{row.ppd.toLocaleString()}</span></td>
-                          <td className="py-2"><input type="number" min="0" value={a.actualPpd||""} onChange={e=>updateActual(i,"actualPpd",e.target.value)} placeholder="—" className="w-full text-center text-xs font-bold border border-amber-300 rounded px-1 py-1 bg-amber-50 text-amber-700 focus:outline-none"/></td>
+                          <td className="py-2"><input type="number" min="0" value={a.actualPpd||""} onChange={e=>updateActualFn(i,"actualPpd",e.target.value)} placeholder="—" className="w-full text-center text-xs font-bold border border-amber-300 rounded px-1 py-1 bg-amber-50 text-amber-700 focus:outline-none"/></td>
                           <td className="py-2 text-center" style={{background:DIV_COLORS.LLD+"0d"}}><span className="font-semibold text-xs" style={{color:DIV_COLORS.LLD}}>{row.lld.toLocaleString()}</span></td>
-                          <td className="py-2"><input type="number" min="0" value={a.actualLld||""} onChange={e=>updateActual(i,"actualLld",e.target.value)} placeholder="—" className="w-full text-center text-xs font-bold border border-amber-300 rounded px-1 py-1 bg-amber-50 text-amber-700 focus:outline-none"/></td>
+                          <td className="py-2"><input type="number" min="0" value={a.actualLld||""} onChange={e=>updateActualFn(i,"actualLld",e.target.value)} placeholder="—" className="w-full text-center text-xs font-bold border border-amber-300 rounded px-1 py-1 bg-amber-50 text-amber-700 focus:outline-none"/></td>
                           <td className="py-2 text-center text-xs">{rd}</td>
                         </tr>
                       );
@@ -998,74 +899,43 @@ export default function App() {
               {[{label:"Jan–Mar",sub:"Manual only",cap:monthlyCap[0]?.manualTotal||0,color:"bg-gray-600",note:`${manualRate} assets/day`},
                 {label:"Apr–May",sub:"LLD automated",cap:monthlyCap[3]?.total||0,color:"bg-green-600",note:`LLD blended: ${Math.round(autoConfig.LLD.simplePct*autoQCRate+(1-autoConfig.LLD.simplePct)*manualRate)}/day`},
                 {label:"Jun–Dec",sub:"All automated",cap:monthlyCap[5]?.total||0,color:"bg-emerald-600",note:"All divisions blended"}
-              ].map(s=>(
-                <div key={s.label} className={`${s.color} text-white rounded-2xl p-5`}>
-                  <p className="text-xs font-bold uppercase opacity-70 mb-1">{s.label}</p>
-                  <p className="text-xs opacity-60 mb-2">{s.sub}</p>
-                  <p className="text-3xl font-black">{s.cap.toLocaleString()}</p>
-                  <p className="text-xs opacity-70 mt-1">assets/month</p>
-                  <p className="text-xs opacity-50 mt-2">{s.note}</p>
-                </div>
-              ))}
+              ].map(s=>(<div key={s.label} className={`${s.color} text-white rounded-2xl p-5`}><p className="text-xs font-bold uppercase opacity-70 mb-1">{s.label}</p><p className="text-xs opacity-60 mb-2">{s.sub}</p><p className="text-3xl font-black">{s.cap.toLocaleString()}</p><p className="text-xs opacity-70 mt-1">assets/month</p><p className="text-xs opacity-50 mt-2">{s.note}</p></div>))}
             </div>
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-sm font-bold text-gray-800">🤖 Automation Settings</h2>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-gray-500">Automation</span>
-                  <button onClick={()=>setAutoEnabled(v=>!v)} className={`relative inline-flex h-6 w-11 items-center rounded-full ${autoEnabled?"bg-green-500":"bg-gray-300"}`}>
-                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${autoEnabled?"translate-x-6":"translate-x-1"}`}/>
-                  </button>
-                  <span className={`text-xs font-bold ${autoEnabled?"text-green-600":"text-gray-400"}`}>{autoEnabled?"Enabled":"Disabled"}</span>
-                </div>
+                <div className="flex items-center gap-3"><span className="text-xs text-gray-500">Automation</span><button onClick={()=>setAutoEnabled(v=>!v)} className={`relative inline-flex h-6 w-11 items-center rounded-full ${autoEnabled?"bg-green-500":"bg-gray-300"}`}><span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${autoEnabled?"translate-x-6":"translate-x-1"}`}/></button><span className={`text-xs font-bold ${autoEnabled?"text-green-600":"text-gray-400"}`}>{autoEnabled?"Enabled":"Disabled"}</span></div>
               </div>
               <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-4">
-                <div className="flex items-center justify-between mb-2">
-                  <div><p className="text-sm font-bold text-green-800">QC Rate</p><p className="text-xs text-green-600">Assets/designer/day via canvas · vs manual: {manualRate}/day · {(autoQCRate/manualRate).toFixed(1)}×</p></div>
-                  <div className="bg-green-600 text-white rounded-xl px-5 py-2 text-center"><p className="text-xs opacity-80">QC/day</p><p className="text-3xl font-black">{autoQCRate}</p></div>
-                </div>
+                <div className="flex items-center justify-between mb-2"><div><p className="text-sm font-bold text-green-800">QC Rate</p><p className="text-xs text-green-600">Assets/designer/day via canvas · vs manual: {manualRate}/day · {(autoQCRate/manualRate).toFixed(1)}×</p></div><div className="bg-green-600 text-white rounded-xl px-5 py-2 text-center"><p className="text-xs opacity-80">QC/day</p><p className="text-3xl font-black">{autoQCRate}</p></div></div>
                 <input type="range" min={50} max={500} step={25} value={autoQCRate} onChange={e=>{setAutoQCRate(+e.target.value);saveSettings({autoQCRate:+e.target.value});}} className="w-full accent-green-600"/>
               </div>
               <div className="grid grid-cols-3 gap-4">
                 {DIVS.map(div=>{
-                  const cfg=autoConfig[div];
-                  const br=Math.round(cfg.simplePct*autoQCRate+(1-cfg.simplePct)*manualRate);
+                  const cfg=autoConfig[div], br=Math.round(cfg.simplePct*autoQCRate+(1-cfg.simplePct)*manualRate);
                   return(
                     <div key={div} className="rounded-xl border border-gray-200 p-4" style={{borderColor:DIV_COLORS[div]+"66"}}>
-                      <div className="flex items-center justify-between mb-3">
-                        <p className="text-sm font-black" style={{color:DIV_COLORS[div]}}>{div}</p>
-                        {cfg.goLiveMonth!=="Off"&&<span className="text-xs px-2 py-0.5 rounded-full font-bold text-white" style={{background:DIV_COLORS[div]}}>Go-live: {cfg.goLiveMonth}</span>}
-                      </div>
+                      <div className="flex items-center justify-between mb-3"><p className="text-sm font-black" style={{color:DIV_COLORS[div]}}>{div}</p>{cfg.goLiveMonth!=="Off"&&<span className="text-xs px-2 py-0.5 rounded-full font-bold text-white" style={{background:DIV_COLORS[div]}}>Go-live: {cfg.goLiveMonth}</span>}</div>
                       <div className="mb-3"><label className="text-xs font-semibold text-gray-600 block mb-1">Go-Live Month</label><div className="flex gap-1 flex-wrap">{GO_LIVE_OPTIONS.map(m=>(<button key={m} onClick={()=>updateAuto(div,"goLiveMonth",m)} className={`px-2 py-0.5 text-xs rounded font-semibold ${cfg.goLiveMonth===m?"text-white":"bg-gray-100 text-gray-500"}`} style={cfg.goLiveMonth===m?{background:DIV_COLORS[div]}:{}}>{m}</button>))}</div></div>
-                      <div className="mb-3">
-                        <div className="flex justify-between mb-1"><label className="text-xs font-semibold text-gray-600">Simple %</label><span className="text-sm font-black" style={{color:DIV_COLORS[div]}}>{Math.round(cfg.simplePct*100)}%</span></div>
-                        <input type="range" min={0} max={1} step={0.05} value={cfg.simplePct} onChange={e=>updateAuto(div,"simplePct",+e.target.value)} className="w-full" style={{accentColor:DIV_COLORS[div]}}/>
-                      </div>
+                      <div className="mb-3"><div className="flex justify-between mb-1"><label className="text-xs font-semibold text-gray-600">Simple %</label><span className="text-sm font-black" style={{color:DIV_COLORS[div]}}>{Math.round(cfg.simplePct*100)}%</span></div><input type="range" min={0} max={1} step={0.05} value={cfg.simplePct} onChange={e=>updateAuto(div,"simplePct",+e.target.value)} className="w-full" style={{accentColor:DIV_COLORS[div]}}/></div>
                       <div className="bg-gray-50 rounded-lg p-3 text-center"><p className="text-xs text-gray-500 mb-1">Blended rate</p><p className="text-2xl font-black" style={{color:DIV_COLORS[div]}}>{br}</p><p className="text-xs text-gray-400">assets/day</p></div>
                     </div>
                   );
                 })}
               </div>
             </div>
-            {/* Eligibility toggles */}
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
               <h2 className="text-sm font-bold text-gray-800 mb-4">Project Type — Automation Eligibility</h2>
               <div className="grid grid-cols-3 gap-3">
                 {mix.map(m=>{
-                  const pt=PT_BASE.find(p=>p.id===m.id);
-                  if(!pt) return null;
+                  const pt=PT_BASE.find(p=>p.id===m.id); if(!pt) return null;
                   return(
                     <div key={m.id} className={`rounded-xl border p-3 ${m.autoEligible?"border-green-200 bg-green-50":"border-gray-200 bg-gray-50"}`}>
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                          <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{background:pt.color}}/>
-                          <span className="text-xs font-semibold text-gray-800 truncate">{pt.label}</span>
-                        </div>
+                        <div className="flex items-center gap-2 flex-1 min-w-0"><div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{background:pt.color}}/><span className="text-xs font-semibold text-gray-800 truncate">{pt.label}</span></div>
                         <div className="flex items-center gap-1.5 ml-2 flex-shrink-0">
                           <span className={`text-xs font-bold ${m.autoEligible?"text-green-600":"text-gray-400"}`}>{m.autoEligible?"🤖":"Manual"}</span>
-                          <button onClick={()=>toggleAuto(m.id)} className={`relative inline-flex h-5 w-9 items-center rounded-full ${m.autoEligible?"bg-green-500":"bg-gray-300"}`}>
-                            <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${m.autoEligible?"translate-x-4":"translate-x-0.5"}`}/>
-                          </button>
+                          <button onClick={()=>toggleAuto(m.id)} className={`relative inline-flex h-5 w-9 items-center rounded-full ${m.autoEligible?"bg-green-500":"bg-gray-300"}`}><span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${m.autoEligible?"translate-x-4":"translate-x-0.5"}`}/></button>
                         </div>
                       </div>
                     </div>
@@ -1073,7 +943,6 @@ export default function App() {
                 })}
               </div>
             </div>
-            {/* Step-change chart */}
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
               <h2 className="text-sm font-bold text-gray-800 mb-1">Capacity Step-Change — Jan–Dec 2026</h2>
               <p className="text-xs text-gray-400 mb-3">Grey = manual (stops at go-live) · Green = with automation (starts at go-live)</p>
@@ -1104,21 +973,15 @@ export default function App() {
                 const uP=uc(da.tPM,p.pm), uD=uc(da.tDes,p.des), rP=rag(uP), rD=rag(uD);
                 return(
                   <div key={div} className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4">
-                    <div className="flex justify-between mb-2">
-                      <h3 className="font-black text-gray-900">{div}</h3>
-                      <div className="text-right"><p className="text-2xl font-black text-blue-700">{da.tProj}</p><p className="text-xs text-gray-400">~{Math.round(da.tProj/period.months)}/mo</p></div>
-                    </div>
+                    <div className="flex justify-between mb-2"><h3 className="font-black text-gray-900">{div}</h3><div className="text-right"><p className="text-2xl font-black text-blue-700">{da.tProj}</p><p className="text-xs text-gray-400">~{Math.round(da.tProj/period.months)}/mo</p></div></div>
                     <p className="text-xs text-indigo-700 font-bold mb-3">~{da.tAssets.toLocaleString()} assets</p>
-                    {[{l:"PM",u:uP,r:rP},{l:"Designer",u:uD,r:rD}].map(x=>(
-                      <div key={x.l} className="mb-2">
-                        <div className="flex justify-between text-xs mb-0.5"><span className="text-gray-600">{x.l}</span><span className={`font-bold ${x.r.tx}`}>{x.u}%</span></div>
-                        <div className="w-full bg-gray-100 rounded h-2"><div className={`h-2 rounded ${x.r.bar}`} style={{width:`${Math.min(x.u,100)}%`}}/></div>
-                      </div>
-                    ))}
+                    {[{l:"PM",u:uP,r:rP},{l:"Designer",u:uD,r:rD}].map(x=>(<div key={x.l} className="mb-2"><div className="flex justify-between text-xs mb-0.5"><span className="text-gray-600">{x.l}</span><span className={`font-bold ${x.r.tx}`}>{x.u}%</span></div><div className="w-full bg-gray-100 rounded h-2"><div className={`h-2 rounded ${x.r.bar}`} style={{width:`${Math.min(x.u,100)}%`}}/></div></div>))}
                   </div>
                 );
               })}
             </div>
+
+            {/* ── INTAKE TABLE — FIXED: no React.Fragment ── */}
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-sm font-bold text-gray-800">Adjust Intake & Asset Counts — {period.label}</h2>
@@ -1149,23 +1012,46 @@ export default function App() {
                         <tr key={m.id} className={`border-t border-gray-100 hover:bg-gray-50 ${m.autoEligible?"bg-green-50":""}`}>
                           <td className="px-3 py-2"><div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full" style={{background:pt?.color||"#666"}}/><span className="font-semibold">{pt?.label||m.id}</span></div></td>
                           <td className="px-3 py-2 text-center"><span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${m.autoEligible?"bg-green-100 text-green-700":"bg-gray-100 text-gray-400"}`}>{m.autoEligible?"🤖":"Manual"}</span></td>
-                          {[{div:"LDB",key:"assetsLDB"},{div:"PPD",key:"assetsPPD"},{div:"LLD",key:"assetsLLD"}].map(({div:d,key})=>(
-                            <>
-                              <td className="px-3 py-2 text-center">
-                                <div className="flex items-center justify-center gap-1">
-                                  <button onClick={()=>updateMixCount(m.id,d,m[d]-1)} className="w-5 h-5 rounded bg-gray-200 text-xs font-bold">−</button>
-                                  <span className="w-6 text-center font-black" style={{color:DIV_COLORS[d]}}>{m[d]}</span>
-                                  <button onClick={()=>updateMixCount(m.id,d,m[d]+1)} className="w-5 h-5 rounded bg-gray-200 text-xs font-bold">+</button>
-                                </div>
-                              </td>
-                              <td className="px-3 py-2 text-center">
-                                <input type="number" min="1" value={m[key]} onChange={e=>updateMixAssets(m.id,key,+e.target.value)}
-                                  className="w-16 text-center text-xs font-bold border rounded px-1 py-1 focus:outline-none"
-                                  style={{borderColor:DIV_COLORS[d]+"66",color:DIV_COLORS[d]}}/>
-                                <p className="text-xs text-gray-400">{(m[key]*m[d]).toLocaleString()}</p>
-                              </td>
-                              </>
-                          ))}
+
+                          {/* LDB — NO React.Fragment, plain td pairs */}
+                          <td className="px-3 py-2 text-center">
+                            <div className="flex items-center justify-center gap-1">
+                              <button onClick={()=>updateMixCount(m.id,"LDB",m.LDB-1)} className="w-5 h-5 rounded bg-gray-200 text-xs font-bold">−</button>
+                              <span className="w-6 text-center font-black" style={{color:DIV_COLORS.LDB}}>{m.LDB}</span>
+                              <button onClick={()=>updateMixCount(m.id,"LDB",m.LDB+1)} className="w-5 h-5 rounded bg-gray-200 text-xs font-bold">+</button>
+                            </div>
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            <input type="number" min="1" value={m.assetsLDB} onChange={e=>updateMixAssets(m.id,"assetsLDB",+e.target.value)} className="w-16 text-center text-xs font-bold border rounded px-1 py-1 focus:outline-none" style={{borderColor:DIV_COLORS.LDB+"66",color:DIV_COLORS.LDB}}/>
+                            <p className="text-xs text-gray-400">{(m.assetsLDB*m.LDB).toLocaleString()}</p>
+                          </td>
+
+                          {/* PPD */}
+                          <td className="px-3 py-2 text-center">
+                            <div className="flex items-center justify-center gap-1">
+                              <button onClick={()=>updateMixCount(m.id,"PPD",m.PPD-1)} className="w-5 h-5 rounded bg-gray-200 text-xs font-bold">−</button>
+                              <span className="w-6 text-center font-black" style={{color:DIV_COLORS.PPD}}>{m.PPD}</span>
+                              <button onClick={()=>updateMixCount(m.id,"PPD",m.PPD+1)} className="w-5 h-5 rounded bg-gray-200 text-xs font-bold">+</button>
+                            </div>
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            <input type="number" min="1" value={m.assetsPPD} onChange={e=>updateMixAssets(m.id,"assetsPPD",+e.target.value)} className="w-16 text-center text-xs font-bold border rounded px-1 py-1 focus:outline-none" style={{borderColor:DIV_COLORS.PPD+"66",color:DIV_COLORS.PPD}}/>
+                            <p className="text-xs text-gray-400">{(m.assetsPPD*m.PPD).toLocaleString()}</p>
+                          </td>
+
+                          {/* LLD */}
+                          <td className="px-3 py-2 text-center">
+                            <div className="flex items-center justify-center gap-1">
+                              <button onClick={()=>updateMixCount(m.id,"LLD",m.LLD-1)} className="w-5 h-5 rounded bg-gray-200 text-xs font-bold">−</button>
+                              <span className="w-6 text-center font-black" style={{color:DIV_COLORS.LLD}}>{m.LLD}</span>
+                              <button onClick={()=>updateMixCount(m.id,"LLD",m.LLD+1)} className="w-5 h-5 rounded bg-gray-200 text-xs font-bold">+</button>
+                            </div>
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            <input type="number" min="1" value={m.assetsLLD} onChange={e=>updateMixAssets(m.id,"assetsLLD",+e.target.value)} className="w-16 text-center text-xs font-bold border rounded px-1 py-1 focus:outline-none" style={{borderColor:DIV_COLORS.LLD+"66",color:DIV_COLORS.LLD}}/>
+                            <p className="text-xs text-gray-400">{(m.assetsLLD*m.LLD).toLocaleString()}</p>
+                          </td>
+
                           <td className="px-3 py-2 text-center font-black text-blue-700">{rowTot}</td>
                           <td className="px-3 py-2 text-center font-bold text-indigo-700">{rowAssets.toLocaleString()}</td>
                         </tr>
@@ -1192,43 +1078,18 @@ export default function App() {
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
               <h2 className="text-sm font-bold text-gray-800 mb-4">Single Project SLA Estimator</h2>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                <div className="bg-purple-50 border border-purple-200 rounded-xl p-3">
-                  <label className="text-xs font-bold text-purple-700 block mb-2">Complexity</label>
-                  <div className="flex gap-1 flex-wrap">{["Simple","Complex","Creation","Bespoke"].map(c=>(<button key={c} onClick={()=>setCalcCplx(c)} className={`px-2 py-0.5 text-xs rounded font-semibold ${calcCplx===c?"bg-purple-600 text-white":"bg-white text-purple-600 border border-purple-200"}`}>{c}</button>))}</div>
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-gray-700 block mb-2">Asset Volume</label>
-                  <div className="flex gap-1 flex-wrap">{ASSET_BANDS.map(b=>(<button key={b} onClick={()=>setCalcAssetBand(b)} className={`px-2 py-0.5 text-xs rounded font-semibold ${calcAssetBand===b?"bg-indigo-600 text-white":"bg-gray-100 text-gray-600"}`}>{b}</button>))}</div>
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-gray-700 block mb-2">Client Feedback</label>
-                  <div className="flex gap-1">{[{l:"Realistic",v:true},{l:"Best Case",v:false}].map(o=>(<button key={o.l} onClick={()=>setClientDays(o.v)} className={`px-2 py-1 text-xs rounded font-semibold ${clientDays===o.v?"bg-amber-500 text-white":"bg-gray-100 text-gray-600"}`}>{o.l}</button>))}</div>
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-gray-700 block mb-2">EAN Band</label>
-                  <div className="flex gap-1">{["1-5 EANs","5-10 EANs","10-15 EANs"].map(b=>(<button key={b} onClick={()=>setEanBand(b)} className={`px-2 py-0.5 text-xs rounded font-semibold ${eanBand===b?"bg-teal-600 text-white":"bg-gray-100 text-gray-600"}`}>{b.replace(" EANs","")}</button>))}</div>
-                </div>
+                <div className="bg-purple-50 border border-purple-200 rounded-xl p-3"><label className="text-xs font-bold text-purple-700 block mb-2">Complexity</label><div className="flex gap-1 flex-wrap">{["Simple","Complex","Creation","Bespoke"].map(c=>(<button key={c} onClick={()=>setCalcCplx(c)} className={`px-2 py-0.5 text-xs rounded font-semibold ${calcCplx===c?"bg-purple-600 text-white":"bg-white text-purple-600 border border-purple-200"}`}>{c}</button>))}</div></div>
+                <div><label className="text-xs font-bold text-gray-700 block mb-2">Asset Volume</label><div className="flex gap-1 flex-wrap">{ASSET_BANDS.map(b=>(<button key={b} onClick={()=>setCalcAssetBand(b)} className={`px-2 py-0.5 text-xs rounded font-semibold ${calcAssetBand===b?"bg-indigo-600 text-white":"bg-gray-100 text-gray-600"}`}>{b}</button>))}</div></div>
+                <div><label className="text-xs font-bold text-gray-700 block mb-2">Client Feedback</label><div className="flex gap-1">{[{l:"Realistic",v:true},{l:"Best Case",v:false}].map(o=>(<button key={o.l} onClick={()=>setClientDays(o.v)} className={`px-2 py-1 text-xs rounded font-semibold ${clientDays===o.v?"bg-amber-500 text-white":"bg-gray-100 text-gray-600"}`}>{o.l}</button>))}</div></div>
+                <div><label className="text-xs font-bold text-gray-700 block mb-2">EAN Band</label><div className="flex gap-1">{["1-5 EANs","5-10 EANs","10-15 EANs"].map(b=>(<button key={b} onClick={()=>setEanBand(b)} className={`px-2 py-0.5 text-xs rounded font-semibold ${eanBand===b?"bg-teal-600 text-white":"bg-gray-100 text-gray-600"}`}>{b.replace(" EANs","")}</button>))}</div></div>
               </div>
-              <div>
-                <label className="text-xs font-bold text-gray-700 block mb-2">Project Type</label>
-                <div className="flex gap-2 flex-wrap">{PT.map(pt=>(<button key={pt.id} onClick={()=>setCalcType(pt.id)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${calcType===pt.id?"text-white border-transparent":"bg-gray-50 text-gray-600 border-gray-200"}`} style={calcType===pt.id?{background:pt.color}:{}}>{pt.label}{pt.autoEligible&&" 🤖"}{hasOv(pt.id)&&<span className="ml-1 opacity-70">✎</span>}</button>))}</div>
-              </div>
+              <div><label className="text-xs font-bold text-gray-700 block mb-2">Project Type</label><div className="flex gap-2 flex-wrap">{PT.map(pt=>(<button key={pt.id} onClick={()=>setCalcType(pt.id)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${calcType===pt.id?"text-white border-transparent":"bg-gray-50 text-gray-600 border-gray-200"}`} style={calcType===pt.id?{background:pt.color}:{}}>{pt.label}{pt.autoEligible&&" 🤖"}{hasOv(pt.id)&&<span className="ml-1 opacity-70">✎</span>}</button>))}</div></div>
             </div>
             {calcPt&&calcSla&&(
               <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
                 <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <h2 className="text-base font-black" style={{color:calcPt.color}}>{calcPt.label}</h2>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <p className="text-xs text-gray-500"><strong>{calcCplx}</strong> · <strong>{calcAssetBand}</strong></p>
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${calcPt.autoEligible?"bg-green-100 text-green-700":"bg-gray-100 text-gray-500"}`}>{calcPt.autoEligible?"🤖 Auto eligible":"Manual only"}</span>
-                      {hasOv(calcType)&&<span className="bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full text-xs">Custom SLA</span>}
-                    </div>
-                  </div>
-                  <div className="flex gap-2 items-center">
-                    {hasOv(calcType)&&<button onClick={()=>resetOv(calcType)} className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-orange-50 text-orange-600 border border-orange-200">↩ Reset</button>}
-                    <div className="bg-blue-600 text-white rounded-xl px-4 py-2 text-center"><p className="text-xs opacity-80">Total SLA</p><p className="text-2xl font-black">{calcSla.total}</p><p className="text-xs opacity-70">days</p></div>
-                  </div>
+                  <div><h2 className="text-base font-black" style={{color:calcPt.color}}>{calcPt.label}</h2><div className="flex items-center gap-2 mt-0.5"><p className="text-xs text-gray-500"><strong>{calcCplx}</strong> · <strong>{calcAssetBand}</strong></p><span className={`text-xs px-2 py-0.5 rounded-full font-bold ${calcPt.autoEligible?"bg-green-100 text-green-700":"bg-gray-100 text-gray-500"}`}>{calcPt.autoEligible?"🤖 Auto eligible":"Manual only"}</span>{hasOv(calcType)&&<span className="bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full text-xs">Custom SLA</span>}</div></div>
+                  <div className="flex gap-2 items-center">{hasOv(calcType)&&<button onClick={()=>resetOv(calcType)} className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-orange-50 text-orange-600 border border-orange-200">↩ Reset</button>}<div className="bg-blue-600 text-white rounded-xl px-4 py-2 text-center"><p className="text-xs opacity-80">Total SLA</p><p className="text-2xl font-black">{calcSla.total}</p><p className="text-xs opacity-70">days</p></div></div>
                 </div>
                 <div className="space-y-2">
                   {STAGE_META.map(sm=>{
@@ -1237,10 +1098,7 @@ export default function App() {
                       <div key={sm.key} className={`rounded-xl border p-3 ${active?"border-blue-200 bg-blue-50":"border-gray-100 bg-gray-50 opacity-50"}`}>
                         <div className="flex items-center gap-3">
                           <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${active?"bg-blue-500 text-white":"bg-gray-200 text-gray-400"}`}>{active?"✓":"–"}</div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap"><span className={`text-sm font-bold ${active?"text-blue-900":"text-gray-400"}`}>{sm.label}</span>{isOv&&<span className="text-xs bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full">custom</span>}</div>
-                            <p className="text-xs text-gray-500 mt-0.5">{sm.desc}</p>
-                          </div>
+                          <div className="flex-1 min-w-0"><div className="flex items-center gap-2 flex-wrap"><span className={`text-sm font-bold ${active?"text-blue-900":"text-gray-400"}`}>{sm.label}</span>{isOv&&<span className="text-xs bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full">custom</span>}</div><p className="text-xs text-gray-500 mt-0.5">{sm.desc}</p></div>
                           {active?(
                             <div className="flex items-center gap-2 flex-shrink-0">
                               {isOv&&<span className="text-xs text-gray-400 line-through">{defVal}d</span>}
@@ -1277,19 +1135,15 @@ export default function App() {
             {pendingStarters.length>0&&(
               <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
                 <h3 className="text-sm font-bold text-amber-700 mb-2">⏳ Pending Starters — {pendingStarters.length}</h3>
-                <table className="w-full text-xs">
-                  <thead><tr className="text-amber-600 uppercase"><th className="px-3 py-1 text-left">Name</th><th className="px-3 py-1 text-left">Role</th><th className="px-3 py-1 text-center">Div</th><th className="px-3 py-1 text-center">Start</th><th className="px-3 py-1 text-center">Cap %</th></tr></thead>
-                  <tbody>{pendingStarters.map(p=>{const f=availFrac(p.startDate,p.endDate,WD);return(<tr key={p.id} className="border-t border-amber-100"><td className="px-3 py-1.5 font-semibold">{p.name}</td><td className="px-3 py-1.5 text-gray-600">{p.role}</td><td className="px-3 py-1.5 text-center"><span className="font-bold text-xs px-2 py-0.5 rounded-full" style={{background:DIV_COLORS[p.division]+"22",color:DIV_COLORS[p.division]}}>{p.division}</span></td><td className="px-3 py-1.5 text-center font-bold text-amber-700">{startLbl(p.startDate)}</td><td className="px-3 py-1.5 text-center font-bold text-green-600">{Math.round(f*100)}%</td></tr>);})}</tbody>
-                </table>
+                <table className="w-full text-xs"><thead><tr className="text-amber-600 uppercase"><th className="px-3 py-1 text-left">Name</th><th className="px-3 py-1 text-left">Role</th><th className="px-3 py-1 text-center">Div</th><th className="px-3 py-1 text-center">Start</th><th className="px-3 py-1 text-center">Cap %</th></tr></thead>
+                <tbody>{pendingStarters.map(p=>{const f=availFrac(p.startDate,p.endDate,WD);return(<tr key={p.id} className="border-t border-amber-100"><td className="px-3 py-1.5 font-semibold">{p.name}</td><td className="px-3 py-1.5 text-gray-600">{p.role}</td><td className="px-3 py-1.5 text-center"><span className="font-bold text-xs px-2 py-0.5 rounded-full" style={{background:DIV_COLORS[p.division]+"22",color:DIV_COLORS[p.division]}}>{p.division}</span></td><td className="px-3 py-1.5 text-center font-bold text-amber-700">{startLbl(p.startDate)}</td><td className="px-3 py-1.5 text-center font-bold text-green-600">{Math.round(f*100)}%</td></tr>);})}</tbody></table>
               </div>
             )}
             {pendingLeavers.length>0&&(
               <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
                 <h3 className="text-sm font-bold text-red-700 mb-2">🔴 Planned Leavers — {pendingLeavers.length}</h3>
-                <table className="w-full text-xs">
-                  <thead><tr className="text-red-600 uppercase"><th className="px-3 py-1 text-left">Name</th><th className="px-3 py-1 text-left">Role</th><th className="px-3 py-1 text-center">Div</th><th className="px-3 py-1 text-center">Exit</th><th className="px-3 py-1 text-center">Remaining %</th></tr></thead>
-                  <tbody>{pendingLeavers.map(p=>{const f=availFrac(p.startDate,p.endDate,WD);return(<tr key={p.id} className="border-t border-red-100"><td className="px-3 py-1.5 font-semibold">{p.name}</td><td className="px-3 py-1.5 text-gray-600">{p.role}</td><td className="px-3 py-1.5 text-center"><span className="font-bold text-xs px-2 py-0.5 rounded-full" style={{background:DIV_COLORS[p.division]+"22",color:DIV_COLORS[p.division]}}>{p.division}</span></td><td className="px-3 py-1.5 text-center font-bold text-red-700">{endLbl(p.endDate)}</td><td className="px-3 py-1.5 text-center font-bold text-amber-600">{Math.round(f*100)}%</td></tr>);})}</tbody>
-                </table>
+                <table className="w-full text-xs"><thead><tr className="text-red-600 uppercase"><th className="px-3 py-1 text-left">Name</th><th className="px-3 py-1 text-left">Role</th><th className="px-3 py-1 text-center">Div</th><th className="px-3 py-1 text-center">Exit</th><th className="px-3 py-1 text-center">Remaining %</th></tr></thead>
+                <tbody>{pendingLeavers.map(p=>{const f=availFrac(p.startDate,p.endDate,WD);return(<tr key={p.id} className="border-t border-red-100"><td className="px-3 py-1.5 font-semibold">{p.name}</td><td className="px-3 py-1.5 text-gray-600">{p.role}</td><td className="px-3 py-1.5 text-center"><span className="font-bold text-xs px-2 py-0.5 rounded-full" style={{background:DIV_COLORS[p.division]+"22",color:DIV_COLORS[p.division]}}>{p.division}</span></td><td className="px-3 py-1.5 text-center font-bold text-red-700">{endLbl(p.endDate)}</td><td className="px-3 py-1.5 text-center font-bold text-amber-600">{Math.round(f*100)}%</td></tr>);})}</tbody></table>
               </div>
             )}
             <div className="grid grid-cols-4 gap-3">
@@ -1300,11 +1154,7 @@ export default function App() {
               <div className="flex flex-wrap gap-3 items-center justify-between mb-3">
                 <div className="flex flex-wrap gap-2 items-center">
                   <input value={tmSearch} onChange={e=>setTmSearch(e.target.value)} placeholder="Search name…" className="border border-gray-200 rounded-lg px-3 py-1.5 text-xs w-40 focus:outline-none focus:ring-1 focus:ring-blue-400"/>
-                  {[{val:tmDiv,set:setTmDiv,opts:["All","LDB","PPD","LLD"]},{val:tmType,set:setTmType,opts:["All","FTE","Freelance"]},{val:tmRole,set:setTmRole,opts:["All","Project Manager","Integrated Designer"]}].map((s,i)=>(
-                    <select key={i} value={s.val} onChange={e=>s.set(e.target.value)} className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none">
-                      {s.opts.map(o=><option key={o}>{o}</option>)}
-                    </select>
-                  ))}
+                  {[{val:tmDiv,set:setTmDiv,opts:["All","LDB","PPD","LLD"]},{val:tmType,set:setTmType,opts:["All","FTE","Freelance"]},{val:tmRole,set:setTmRole,opts:["All","Project Manager","Integrated Designer"]}].map((s,i)=>(<select key={i} value={s.val} onChange={e=>s.set(e.target.value)} className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none">{s.opts.map(o=><option key={o}>{o}</option>)}</select>))}
                   <span className="text-xs text-gray-400">{tmFiltered.length} shown</span>
                 </div>
                 <button onClick={()=>setShowAdd(true)} className="px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700">+ Add Person</button>
@@ -1314,28 +1164,11 @@ export default function App() {
                   <h3 className="text-sm font-bold text-blue-800 mb-3">➕ Add New Team Member</h3>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3">
                     <div><label className="text-xs font-semibold text-gray-700 block mb-1">Full Name *</label><input value={newP.name} onChange={e=>setNewP(p=>({...p,name:e.target.value}))} placeholder="e.g. Jane Smith" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"/></div>
-                    {[{label:"Role",val:newP.role,set:v=>setNewP(p=>({...p,role:v})),opts:ROLE_OPTIONS},{label:"Function",val:newP.family,set:v=>setNewP(p=>({...p,family:v})),opts:FAMILY_OPTIONS},{label:"Contract",val:newP.type,set:v=>setNewP(p=>({...p,type:v})),opts:["FTE","Freelance"]},{label:"Division",val:newP.division,set:v=>setNewP(p=>({...p,division:v})),opts:["LDB","PPD","LLD","ALL"]},{label:"Status",val:newP.status,set:v=>setNewP(p=>({...p,status:v})),opts:STATUS_OPTIONS}].map(f=>(
-                      <div key={f.label}><label className="text-xs font-semibold text-gray-700 block mb-1">{f.label}</label><select value={f.val} onChange={e=>f.set(e.target.value)} className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none">{f.opts.map(o=><option key={o}>{o}</option>)}</select></div>
-                    ))}
-                    <div className="bg-blue-100 rounded-xl p-3">
-                      <label className="text-xs font-bold text-blue-800 block mb-1">📅 Start Date</label>
-                      <select value={newP.startDate} onChange={e=>setNewP(p=>({...p,startDate:e.target.value}))} className="w-full border border-blue-300 rounded-lg px-3 py-2 text-xs bg-white focus:outline-none font-semibold">
-                        {WEEK_OPTIONS.map(w=>(<option key={w.value} value={w.value}>{w.label}</option>))}
-                      </select>
-                      {newP.startDate&&newP.startDate!=="now"&&<p className="text-xs text-blue-600 mt-1 font-semibold">→ {Math.round(availFrac(newP.startDate,newP.endDate,WD)*100)}% of {period.label}</p>}
-                    </div>
-                    <div className="bg-red-50 border border-red-200 rounded-xl p-3">
-                      <label className="text-xs font-bold text-red-700 block mb-1">🔴 Exit Date</label>
-                      <select value={newP.endDate} onChange={e=>setNewP(p=>({...p,endDate:e.target.value}))} className="w-full border border-red-200 rounded-lg px-3 py-2 text-xs bg-white focus:outline-none font-semibold">
-                        <option value="never">No planned exit</option>
-                        {WEEK_OPTIONS.filter(w=>w.value!=="now").map(w=>(<option key={w.value} value={w.value}>{w.label}</option>))}
-                      </select>
-                    </div>
+                    {[{label:"Role",val:newP.role,set:v=>setNewP(p=>({...p,role:v})),opts:ROLE_OPTIONS},{label:"Function",val:newP.family,set:v=>setNewP(p=>({...p,family:v})),opts:FAMILY_OPTIONS},{label:"Contract",val:newP.type,set:v=>setNewP(p=>({...p,type:v})),opts:["FTE","Freelance"]},{label:"Division",val:newP.division,set:v=>setNewP(p=>({...p,division:v})),opts:["LDB","PPD","LLD","ALL"]},{label:"Status",val:newP.status,set:v=>setNewP(p=>({...p,status:v})),opts:STATUS_OPTIONS}].map(f=>(<div key={f.label}><label className="text-xs font-semibold text-gray-700 block mb-1">{f.label}</label><select value={f.val} onChange={e=>f.set(e.target.value)} className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none">{f.opts.map(o=><option key={o}>{o}</option>)}</select></div>))}
+                    <div className="bg-blue-100 rounded-xl p-3"><label className="text-xs font-bold text-blue-800 block mb-1">📅 Start Date</label><select value={newP.startDate} onChange={e=>setNewP(p=>({...p,startDate:e.target.value}))} className="w-full border border-blue-300 rounded-lg px-3 py-2 text-xs bg-white focus:outline-none font-semibold">{WEEK_OPTIONS.map(w=>(<option key={w.value} value={w.value}>{w.label}</option>))}</select>{newP.startDate&&newP.startDate!=="now"&&<p className="text-xs text-blue-600 mt-1 font-semibold">→ {Math.round(availFrac(newP.startDate,newP.endDate,WD)*100)}% of {period.label}</p>}</div>
+                    <div className="bg-red-50 border border-red-200 rounded-xl p-3"><label className="text-xs font-bold text-red-700 block mb-1">🔴 Exit Date</label><select value={newP.endDate} onChange={e=>setNewP(p=>({...p,endDate:e.target.value}))} className="w-full border border-red-200 rounded-lg px-3 py-2 text-xs bg-white focus:outline-none font-semibold"><option value="never">No planned exit</option>{WEEK_OPTIONS.filter(w=>w.value!=="now").map(w=>(<option key={w.value} value={w.value}>{w.label}</option>))}</select></div>
                   </div>
-                  <div className="flex gap-2">
-                    <button onClick={addPerson} className="px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-lg">✓ Add to Team</button>
-                    <button onClick={()=>setShowAdd(false)} className="px-4 py-2 bg-gray-100 text-gray-600 text-xs font-semibold rounded-lg">Cancel</button>
-                  </div>
+                  <div className="flex gap-2"><button onClick={addPerson} className="px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-lg">✓ Add to Team</button><button onClick={()=>setShowAdd(false)} className="px-4 py-2 bg-gray-100 text-gray-600 text-xs font-semibold rounded-lg">Cancel</button></div>
                 </div>
               )}
               <div className="overflow-x-auto max-h-96 overflow-y-auto">
@@ -1383,7 +1216,7 @@ export default function App() {
 
       <p className="text-center text-xs text-gray-400 py-4">
         L'Oréal eComm · {globalHC.des.total} designers · {manualRate}/day · {projectsPerPM} proj/PM
-        · Team PM cap: {Math.round(totalPMs*projectsPerPM*(utilPM/100)).toLocaleString()}/mo
+        · Total PM cap: {Math.round(totalPMs*projectsPerPM*(utilPM/100)).toLocaleString()}/mo
         · {dbStatus==="connected"?"🟢 Supabase":"⚪ Offline"}
       </p>
     </div>
