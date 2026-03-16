@@ -85,7 +85,6 @@ function availFrac(startDate, endDate, wd) {
 function startLbl(v) { return (!v||v==="now")?"Now":(WEEK_OPTIONS.find(w=>w.value===v)?.label??v); }
 function endLbl(v)   { return (!v||v==="never")?"—":(WEEK_OPTIONS.find(w=>w.value===v)?.label??v); }
 
-// ─── FORECAST DATA ─────────────────────────────────────────────────────────
 const FM = [
   { month:"Jan", ldb:3865,  ppd:3097,  lld:3481,  gt:10443, weeksInMonth:4, weeklyForecast:162, monthlyForecast:648,  permPMMonthly:620,  flyPMMonthly:0,   ldbProj:54,  ppdProj:50,  lldProj:58  },
   { month:"Feb", ldb:1953,  ppd:1695,  lld:3306,  gt:6954,  weeksInMonth:4, weeklyForecast:85,  monthlyForecast:340,  permPMMonthly:570,  flyPMMonthly:120, ldbProj:23,  ppdProj:20,  lldProj:42  },
@@ -226,15 +225,15 @@ const SYND_DAYS  = {
 const ASSET_BANDS = ["0-30","30-50","50-100","100-200","200-300","300-500"];
 
 const PT_BASE = [
-  { id:"cp-simple",     label:"Country Pull – Simple",      stages:[false,false,false,true, true, true, true, false], color:"#3b82f6" },
-  { id:"cp-adaptation", label:"Country Pull – Adaptation",  stages:[false,true, false,true, true, true, true, false], color:"#6366f1" },
-  { id:"cp-creation",   label:"Country Pull – Creation",    stages:[true, true, false,true, true, true, true, false], color:"#8b5cf6" },
-  { id:"retailer",      label:"Country Retailer Request",   stages:[false,false,false,false,false,false,false,true],  color:"#22c55e" },
-  { id:"gp-eventing",   label:"Global Push – Eventing",     stages:[false,true, true, false,false,false,true, false], color:"#f59e0b" },
-  { id:"gp-pdp",        label:"Global Push – PDP",          stages:[false,true, true, false,false,false,true, false], color:"#f97316" },
-  { id:"lp-eventing",   label:"Local Push – Eventing",      stages:[false,false,false,true, true, true, true, true],  color:"#ef4444" },
-  { id:"lp-pdp",        label:"Local Push – PDP",           stages:[false,false,false,true, true, true, true, true],  color:"#ec4899" },
-  { id:"urgent",        label:"Urgent Brief",               stages:[false,false,false,false,false,true, true, false], color:"#14b8a6" },
+  { id:"cp-simple",     label:"Country Pull – Simple",     stages:[false,false,false,true, true, true, true, false], color:"#3b82f6" },
+  { id:"cp-adaptation", label:"Country Pull – Adaptation", stages:[false,true, false,true, true, true, true, false], color:"#6366f1" },
+  { id:"cp-creation",   label:"Country Pull – Creation",   stages:[true, true, false,true, true, true, true, false], color:"#8b5cf6" },
+  { id:"retailer",      label:"Country Retailer Request",  stages:[false,false,false,false,false,false,false,true],  color:"#22c55e" },
+  { id:"gp-eventing",   label:"Global Push – Eventing",    stages:[false,true, true, false,false,false,true, false], color:"#f59e0b" },
+  { id:"gp-pdp",        label:"Global Push – PDP",         stages:[false,true, true, false,false,false,true, false], color:"#f97316" },
+  { id:"lp-eventing",   label:"Local Push – Eventing",     stages:[false,false,false,true, true, true, true, true],  color:"#ef4444" },
+  { id:"lp-pdp",        label:"Local Push – PDP",          stages:[false,false,false,true, true, true, true, true],  color:"#ec4899" },
+  { id:"urgent",        label:"Urgent Brief",              stages:[false,false,false,false,false,true, true, false], color:"#14b8a6" },
 ];
 
 const SK = ["missingDMI","mastering","globalRollout","translation","production","operaUpload","syndication"];
@@ -253,10 +252,8 @@ const TABS = ["📊 Capacity","📈 Forecast","🤖 Automation","🗂 Volume","�
 const DEFAULT_AUTO = { LLD:{simplePct:0.70,goLiveMonth:"Apr"}, LDB:{simplePct:0.50,goLiveMonth:"Jun"}, PPD:{simplePct:0.50,goLiveMonth:"Jun"} };
 
 function stageActive(pt, key) { return (SK_IDX[key]||[]).some(i=>pt.stages[i]); }
-
 function getDefaultDays(ptId, cplx, aBand, eanBand, syndCplx, withCF) {
-  const pt = PT_BASE.find(p=>p.id===ptId);
-  if (!pt) return {};
+  const pt = PT_BASE.find(p=>p.id===ptId); if (!pt) return {};
   return {
     missingDMI:   pt.stages[0]?(6+(withCF?5:0)):0,
     mastering:    pt.stages[1]?2:0,
@@ -275,43 +272,58 @@ function getWeights(ptId) {
 let _nextId = 400;
 
 export default function App() {
-  const [roster,        setRoster]        = useState(DEFAULT_ROSTER);
-  const [mix,           setMix]           = useState(DEFAULT_MIX);
-  const [slaOv,         setSlaOv]         = useState({});
-  const [utilPM,        setUtilPM]        = useState(82);
-  const [utilDes,       setUtilDes]       = useState(82);
-  const [manualRate,    setManualRate]    = useState(25);
-  const [projectsPerPM, setProjectsPerPM] = useState(15);
-  const [periodIdx,     setPeriodIdx]     = useState(0);
-  const [calcCplx,      setCalcCplx]      = useState("Complex");
-  const [eanBand,       setEanBand]       = useState("1-5 EANs");
-  const [syndCplx,      setSyndCplx]      = useState("Simple");
-  const [clientDays,    setClientDays]    = useState(true);
-  const [activeTab,     setActiveTab]     = useState("📊 Capacity");
-  const [divFilter,     setDivFilter]     = useState("All");
-  const [calcType,      setCalcType]      = useState("cp-adaptation");
-  const [calcAssetBand, setCalcAssetBand] = useState("30-50");
-  const [tmSearch,      setTmSearch]      = useState("");
-  const [tmDiv,         setTmDiv]         = useState("All");
-  const [tmType,        setTmType]        = useState("All");
-  const [tmRole,        setTmRole]        = useState("All");
-  const [showAdd,       setShowAdd]       = useState(false);
-  const [newP,          setNewP]          = useState({name:"",role:"Project Manager",family:"PM / Delivery",type:"FTE",division:"LDB",status:"Active",startDate:"now",endDate:"never"});
-  const [editId,        setEditId]        = useState(null);
-  const [editData,      setEditData]      = useState({});
-  const [dbStatus,      setDbStatus]      = useState(hasSupabase?"loading":"offline");
-  const [saving,        setSaving]        = useState(false);
-  const [prevMonths,    setPrevMonths]    = useState(1);
-  const [forecastDiv,   setForecastDiv]   = useState("Total");
-  const [projView,      setProjView]      = useState("Total");
-  const [actuals,       setActuals]       = useState(FM.map(m=>({month:m.month,actualAssets:0,actualLdb:0,actualPpd:0,actualLld:0})));
-  const [autoEnabled,   setAutoEnabled]   = useState(true);
-  const [autoConfig,    setAutoConfig]    = useState(DEFAULT_AUTO);
-  const [autoQCRate,    setAutoQCRate]    = useState(200);
-  const [autoScenario,  setAutoScenario]  = useState("with");
+  const [roster,           setRoster]          = useState(DEFAULT_ROSTER);
+  const [mix,              setMix]             = useState(DEFAULT_MIX);
+  const [slaOv,            setSlaOv]           = useState({});
+  const [utilPM,           setUtilPM]          = useState(82);
+  const [utilDes,          setUtilDes]         = useState(82);
+  const [manualRate,       setManualRate]      = useState(25);
+  // ── CHANGE: two new inputs replace the old projectsPerPM slider ──────────
+  const [pmHoursPerWeek,   setPmHoursPerWeek]  = useState(40);   // total working hours/week
+  const [hoursPerProject,  setHoursPerProject] = useState(2.5);  // avg hrs a PM spends per project per week
+  // projectsPerPM is now DERIVED — not stored as state
+  // ─────────────────────────────────────────────────────────────────────────
+  const [periodIdx,        setPeriodIdx]       = useState(0);
+  const [calcCplx,         setCalcCplx]        = useState("Complex");
+  const [eanBand,          setEanBand]         = useState("1-5 EANs");
+  const [syndCplx,         setSyndCplx]        = useState("Simple");
+  const [clientDays,       setClientDays]      = useState(true);
+  const [activeTab,        setActiveTab]       = useState("📊 Capacity");
+  const [divFilter,        setDivFilter]       = useState("All");
+  const [calcType,         setCalcType]        = useState("cp-adaptation");
+  const [calcAssetBand,    setCalcAssetBand]   = useState("30-50");
+  const [tmSearch,         setTmSearch]        = useState("");
+  const [tmDiv,            setTmDiv]           = useState("All");
+  const [tmType,           setTmType]          = useState("All");
+  const [tmRole,           setTmRole]          = useState("All");
+  const [showAdd,          setShowAdd]         = useState(false);
+  const [newP,             setNewP]            = useState({name:"",role:"Project Manager",family:"PM / Delivery",type:"FTE",division:"LDB",status:"Active",startDate:"now",endDate:"never"});
+  const [editId,           setEditId]          = useState(null);
+  const [editData,         setEditData]        = useState({});
+  const [dbStatus,         setDbStatus]        = useState(hasSupabase?"loading":"offline");
+  const [saving,           setSaving]          = useState(false);
+  const [prevMonths,       setPrevMonths]      = useState(1);
+  const [forecastDiv,      setForecastDiv]     = useState("Total");
+  const [projView,         setProjView]        = useState("Total");
+  const [actuals,          setActuals]         = useState(FM.map(m=>({month:m.month,actualAssets:0,actualLdb:0,actualPpd:0,actualLld:0})));
+  const [autoEnabled,      setAutoEnabled]     = useState(true);
+  const [autoConfig,       setAutoConfig]      = useState(DEFAULT_AUTO);
+  const [autoQCRate,       setAutoQCRate]      = useState(200);
+  const [autoScenario,     setAutoScenario]    = useState("with");
 
   const period = PERIODS[periodIdx];
   const WD = period.workingDays;
+
+  // ── DERIVED: concurrent projects per PM ───────────────────────────────────
+  // Formula: floor( (hours/week × utilisation%) ÷ hours per project )
+  // Minimum 1 to avoid division issues
+  const projectsPerPM = useMemo(()=>{
+    const available = pmHoursPerWeek * (utilPM / 100);
+    return Math.max(1, Math.floor(available / hoursPerProject));
+  },[pmHoursPerWeek, hoursPerProject, utilPM]);
+
+  // Available productive hours per PM per week (for display)
+  const availableHoursPerPM = +(pmHoursPerWeek * (utilPM/100)).toFixed(1);
 
   const updateAuto = (div,field,val) => setAutoConfig(p=>({...p,[div]:{...p[div],[field]:val}}));
   const PT = useMemo(()=>PT_BASE.map(pt=>({...pt, autoEligible: mix.find(x=>x.id===pt.id)?.autoEligible??false})),[mix]);
@@ -344,7 +356,8 @@ export default function App() {
           if(s.key==="utilPM")setUtilPM(+s.value);
           if(s.key==="utilDes")setUtilDes(+s.value);
           if(s.key==="manualRate")setManualRate(+s.value);
-          if(s.key==="projectsPerPM")setProjectsPerPM(+s.value);
+          if(s.key==="pmHoursPerWeek")setPmHoursPerWeek(+s.value);
+          if(s.key==="hoursPerProject")setHoursPerProject(+s.value);
           if(s.key==="periodIdx")setPeriodIdx(+s.value);
           if(s.key==="eanBand")setEanBand(s.value);
           if(s.key==="syndCplx")setSyndCplx(s.value);
@@ -375,7 +388,7 @@ export default function App() {
   const setOv           = async(ptId,key,val)=>{const d=Math.max(0,parseInt(String(val))||0);setSlaOv(prev=>({...prev,[ptId]:{...(prev[ptId]||{}),[key]:d}}));if(hasSupabase){setSaving(true);await sbUpsert("sla_overrides",[{pt_id:ptId,stage_key:key,days:d}]);setSaving(false);}};
   const resetOv         = async id=>{setSlaOv(prev=>{const n={...prev};delete n[id];return n;});if(hasSupabase){setSaving(true);await sbDelete("sla_overrides",`pt_id=eq.${id}`);setSaving(false);}};
   const hasOv           = id=>!!(slaOv[id]&&Object.keys(slaOv[id]).length);
-  const updateActual    = (i,field,val)=>setActuals(prev=>prev.map((a,idx)=>idx===i?{...a,[field]:Math.max(0,parseInt(val)||0)}:a));
+  const updateActualFn  = (i,field,val)=>setActuals(prev=>prev.map((a,idx)=>idx===i?{...a,[field]:Math.max(0,parseInt(val)||0)}:a));
 
   const capacityRoster = useMemo(()=>roster.filter(p=>!p.removed&&p.status==="Active"),[roster]);
 
@@ -452,6 +465,7 @@ export default function App() {
   const ftePM     = capacityRoster.filter(p=>p.role==="Project Manager"&&p.type==="FTE").length;
   const flPM      = capacityRoster.filter(p=>p.role==="Project Manager"&&p.type==="Freelance").length;
   const manualCap = Math.round((globalHC.des.efte||0)*21*(utilDes/100)*manualRate);
+  const totalTeamPMCap = Math.round(totalPMs * projectsPerPM * (utilPM/100));
 
   const monthlyCap = useMemo(()=>FM.map(fm=>{
     const ua=autoEnabled&&autoScenario==="with";
@@ -472,8 +486,6 @@ export default function App() {
       preAutoCapacity:anyAuto?null:manT, postAutoCapacity:anyAuto?autoT:null};
   }),[poolsByDiv,utilDes,autoEnabled,autoScenario,autoConfig,autoQCRate,manualRate]);
 
-  // ── PM project capacity vs Oliver forecast ─────────────────────────────────
-  // FIX: division views now use division-specific PM count from poolsByDiv
   const pmAnalysis = useMemo(()=>FM.map(fm=>{
     const teamCap = Math.round(totalPMs * projectsPerPM * (utilPM/100));
     const demand = fm.monthlyForecast;
@@ -503,8 +515,9 @@ export default function App() {
   }),[forecastChartData,forecastDiv]);
 
   const divSummaryData = DIVS.map(div=>{const a=mixAnalysis.find(x=>x.div===div),p=activePools[div];return{name:div,Projects:a.tProj,Assets:Math.round(a.tAssets),PMUtil:uc(a.tPM,p.pm),DesUtil:uc(a.tDes,p.des)};});
-  const calcPt = PT.find(p=>p.id===calcType);
+  const calcPt  = PT.find(p=>p.id===calcType);
   const calcSla = calcSlaMap[calcType];
+
   const tmFiltered = useMemo(()=>roster.filter(p=>{
     if(tmDiv!=="All"&&p.division!==tmDiv) return false;
     if(tmType!=="All"&&p.type!==tmType) return false;
@@ -512,7 +525,7 @@ export default function App() {
     if(tmSearch&&!p.name.toLowerCase().includes(tmSearch.toLowerCase())) return false;
     return true;
   }),[roster,tmSearch,tmDiv,tmType,tmRole]);
-  const updateActualFn = (i,field,val)=>setActuals(prev=>prev.map((a,idx)=>idx===i?{...a,[field]:Math.max(0,parseInt(val)||0)}:a));
+
   const DIV_PROJ_KEY = {LDB:"ldbProj",PPD:"ppdProj",LLD:"lldProj"};
   const pendingStarters = useMemo(()=>capacityRoster.filter(p=>p.startDate&&p.startDate!=="now"&&new Date(p.startDate)>new Date()).sort((a,b)=>new Date(a.startDate)-new Date(b.startDate)),[capacityRoster]);
   const pendingLeavers  = useMemo(()=>capacityRoster.filter(p=>p.endDate&&p.endDate!=="never"&&new Date(p.endDate)>new Date()).sort((a,b)=>new Date(a.endDate)-new Date(b.endDate)),[capacityRoster]);
@@ -528,7 +541,7 @@ export default function App() {
             <h1 className="text-xl font-black mt-0.5">Capacity & Volume Planning Tool</h1>
             <p className="text-xs text-gray-400 mt-0.5">
               PMs: {globalHC.pm.total} ({ftePM}F+{flPM}FL) · Designers: {globalHC.des.total} ({fteDes}F+{flDes}FL)
-              · {manualRate}/day · {projectsPerPM} proj/PM · cap {Math.round(totalPMs*projectsPerPM*(utilPM/100))}/mo
+              · {manualRate}/day · {availableHoursPerPM}h/PM/wk ÷ {hoursPerProject}h/proj = <span className="text-blue-300 font-bold">{projectsPerPM} concurrent</span>
               {pendingStarters.length>0&&<span className="text-amber-400"> · ⏳{pendingStarters.length}</span>}
               {pendingLeavers.length>0&&<span className="text-red-400"> · 🔴{pendingLeavers.length}</span>}
             </p>
@@ -544,6 +557,8 @@ export default function App() {
       {/* GLOBAL SETTINGS */}
       <div className="bg-white border-b border-gray-200 px-5 py-3">
         <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">⚙️ Global Settings</p>
+
+        {/* Period */}
         <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 mb-3">
           <div className="flex items-center justify-between flex-wrap gap-3">
             <p className="text-xs font-bold text-blue-700 uppercase">📅 Planning Period</p>
@@ -561,27 +576,74 @@ export default function App() {
             </div>
           </div>
         </div>
+
         <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3 mb-3">
-          <div><label className="text-xs font-semibold text-gray-700 block mb-0.5">PM Util: {utilPM}%</label><input type="range" min={60} max={95} value={utilPM} onChange={e=>{setUtilPM(+e.target.value);saveSettings({utilPM:+e.target.value});}} className="w-full accent-blue-600"/></div>
-          <div><label className="text-xs font-semibold text-gray-700 block mb-0.5">Designer Util: {utilDes}%</label><input type="range" min={60} max={95} value={utilDes} onChange={e=>{setUtilDes(+e.target.value);saveSettings({utilDes:+e.target.value});}} className="w-full accent-purple-600"/></div>
-          <div className="bg-blue-50 border border-blue-200 rounded-xl px-3 py-2">
-            <label className="text-xs font-bold text-blue-700 block mb-0.5">Concurrent Proj/PM: <span className="font-black">{projectsPerPM}</span></label>
-            <input type="range" min={3} max={30} value={projectsPerPM} onChange={e=>{setProjectsPerPM(+e.target.value);saveSettings({projectsPerPM:+e.target.value});}} className="w-full accent-blue-600"/>
-            <div className="flex justify-between text-xs text-blue-400 mt-0.5"><span>3</span><span>15</span><span>30</span></div>
-            <p className="text-xs text-blue-600 mt-1">Team PM cap: <strong>{Math.round(totalPMs*projectsPerPM*(utilPM/100)).toLocaleString()}/mo</strong></p>
+          {/* PM Utilisation */}
+          <div>
+            <label className="text-xs font-semibold text-gray-700 block mb-0.5">PM Util: {utilPM}%</label>
+            <input type="range" min={60} max={95} value={utilPM} onChange={e=>{setUtilPM(+e.target.value);saveSettings({utilPM:+e.target.value});}} className="w-full accent-blue-600"/>
           </div>
+
+          {/* Designer Utilisation */}
+          <div>
+            <label className="text-xs font-semibold text-gray-700 block mb-0.5">Designer Util: {utilDes}%</label>
+            <input type="range" min={60} max={95} value={utilDes} onChange={e=>{setUtilDes(+e.target.value);saveSettings({utilDes:+e.target.value});}} className="w-full accent-purple-600"/>
+          </div>
+
+          {/* Manual Throughput */}
           <div className="bg-orange-50 border border-orange-200 rounded-xl px-3 py-2">
             <label className="text-xs font-bold text-orange-700 block mb-0.5">Manual Throughput: <span className="font-black">{manualRate}/day</span></label>
             <input type="range" min={10} max={50} value={manualRate} onChange={e=>{setManualRate(+e.target.value);saveSettings({manualRate:+e.target.value});}} className="w-full accent-orange-600"/>
             <div className="flex justify-between text-xs text-orange-400 mt-0.5"><span>10</span><span>25</span><span>50</span></div>
             <p className="text-xs text-orange-600 mt-1">Asset cap: <strong>{manualCap.toLocaleString()}/mo</strong></p>
           </div>
+
+          {/* ── CHANGE: PM Capacity model — replaces old concurrent projects slider ── */}
+          <div className="bg-blue-50 border border-blue-200 rounded-xl px-3 py-2 row-span-2">
+            <p className="text-xs font-bold text-blue-700 mb-2 uppercase">PM Capacity Model</p>
+
+            {/* Working hours per week */}
+            <div className="mb-3">
+              <label className="text-xs font-semibold text-blue-700 block mb-0.5">
+                Working hours/week: <span className="font-black">{pmHoursPerWeek}h</span>
+              </label>
+              <input type="range" min={35} max={45} step={0.5} value={pmHoursPerWeek}
+                onChange={e=>{setPmHoursPerWeek(+e.target.value);saveSettings({pmHoursPerWeek:+e.target.value});}}
+                className="w-full accent-blue-600"/>
+              <div className="flex justify-between text-xs text-blue-400 mt-0.5"><span>35h</span><span>40h</span><span>45h</span></div>
+            </div>
+
+            {/* Hours per project per week */}
+            <div className="mb-3">
+              <label className="text-xs font-semibold text-blue-700 block mb-0.5">
+                Hrs/project/week: <span className="font-black">{hoursPerProject}h</span>
+              </label>
+              <input type="range" min={0.5} max={8} step={0.5} value={hoursPerProject}
+                onChange={e=>{setHoursPerProject(+e.target.value);saveSettings({hoursPerProject:+e.target.value});}}
+                className="w-full accent-blue-600"/>
+              <div className="flex justify-between text-xs text-blue-400 mt-0.5"><span>0.5h</span><span>2.5h</span><span>8h</span></div>
+            </div>
+
+            {/* Derived result — prominent display */}
+            <div className="bg-blue-600 rounded-xl p-3 text-white text-center">
+              <p className="text-xs opacity-80 mb-1">Concurrent projects/PM</p>
+              <p className="text-3xl font-black leading-none">{projectsPerPM}</p>
+              <p className="text-xs opacity-70 mt-1">= {availableHoursPerPM}h available ÷ {hoursPerProject}h/proj</p>
+              <div className="mt-2 pt-2 border-t border-blue-500">
+                <p className="text-xs opacity-80">Team PM cap/mo</p>
+                <p className="text-xl font-black">{totalTeamPMCap.toLocaleString()}</p>
+                <p className="text-xs opacity-60">{Math.round(totalPMs)} PMs × {projectsPerPM} × {utilPM}%</p>
+              </div>
+            </div>
+          </div>
         </div>
+
         <div className="flex gap-6 mb-3 flex-wrap">
           <div><label className="text-xs font-semibold text-gray-700 block mb-1">Client Feedback</label><div className="flex gap-1">{[{l:"Realistic",v:true},{l:"Best Case",v:false}].map(o=>(<button key={o.l} onClick={()=>{setClientDays(o.v);saveSettings({clientDays:o.v});}} className={`px-2 py-1 text-xs rounded font-semibold ${clientDays===o.v?"bg-amber-500 text-white":"bg-gray-100 text-gray-600"}`}>{o.l}</button>))}</div></div>
           <div><label className="text-xs font-semibold text-gray-700 block mb-1">EAN Band</label><div className="flex gap-1">{["1-5 EANs","5-10 EANs","10-15 EANs"].map(b=>(<button key={b} onClick={()=>{setEanBand(b);saveSettings({eanBand:b});}} className={`px-2 py-0.5 text-xs rounded font-semibold ${eanBand===b?"bg-teal-600 text-white":"bg-gray-100 text-gray-600"}`}>{b.replace(" EANs","")}</button>))}</div></div>
           <div><label className="text-xs font-semibold text-gray-700 block mb-1">Syndication Complexity</label><div className="flex gap-1">{["Simple","Mid","Complex"].map(c=>(<button key={c} onClick={()=>{setSyndCplx(c);saveSettings({syndCplx:c});}} className={`px-2 py-0.5 text-xs rounded font-semibold ${syndCplx===c?"bg-green-600 text-white":"bg-gray-100 text-gray-600"}`}>{c}</button>))}</div></div>
         </div>
+
         <div className="grid grid-cols-3 gap-3">
           {DIVS.map(div=>{
             const hc=poolsByDiv[div], mc=monthlyCap[0];
@@ -645,10 +707,10 @@ export default function App() {
               <div>
                 <p className="text-xs text-gray-400 uppercase font-bold mb-0.5">Data Source</p>
                 <p className="text-xs text-gray-300">Oliver tab · GRAND TOTAL LLD 50% March · Jan–Dec 2026</p>
-                <p className="text-xs text-gray-500 mt-0.5">Monthly projects = Oliver weekly × weeks · PM cap from Oliver lines + team slider</p>
+                <p className="text-xs text-gray-500 mt-0.5">Monthly projects = Oliver weekly × weeks · PM cap = {Math.round(totalPMs)} PMs × {projectsPerPM} concurrent ({availableHoursPerPM}h ÷ {hoursPerProject}h/proj) × {utilPM}%</p>
               </div>
               <div className="flex gap-3 ml-auto flex-wrap">
-                {[{l:"Manual cap/mo",v:manualCap.toLocaleString(),c:"orange"},{l:"Apr cap",v:(monthlyCap[3]?.total||0).toLocaleString(),c:"green"},{l:"Jun cap",v:(monthlyCap[5]?.total||0).toLocaleString(),c:"green"},{l:"Team PM cap/mo",v:Math.round(totalPMs*projectsPerPM*(utilPM/100)).toLocaleString(),c:"blue"}].map(s=>(
+                {[{l:"Manual cap/mo",v:manualCap.toLocaleString(),c:"orange"},{l:"Apr cap",v:(monthlyCap[3]?.total||0).toLocaleString(),c:"green"},{l:"Jun cap",v:(monthlyCap[5]?.total||0).toLocaleString(),c:"green"},{l:"Team PM cap/mo",v:totalTeamPMCap.toLocaleString(),c:"blue"}].map(s=>(
                   <div key={s.l} className="bg-gray-800 rounded-lg px-3 py-1.5 text-center"><p className="text-xs text-gray-400">{s.l}</p><p className={`text-sm font-black text-${s.c}-400`}>{s.v}</p></div>
                 ))}
               </div>
@@ -675,17 +737,16 @@ export default function App() {
               </ResponsiveContainer>
             </div>
 
-            {/* ── PROJECT VOLUME CARD ── */}
+            {/* PROJECT VOLUME CARD */}
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
               <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
                 <div>
                   <h2 className="text-sm font-bold text-gray-800">Project Volume — Oliver Forecast vs PM Capacity</h2>
                   <p className="text-xs text-gray-400 mt-0.5">
                     Monthly demand = Oliver weekly (line 31) × weeks &nbsp;·&nbsp;
-                    Oliver PM cap = perm + flying (from file, monthly) &nbsp;·&nbsp;
                     {projView==="Total"
-                      ? `Your team cap = ${Math.round(totalPMs)} PMs × ${projectsPerPM} × ${utilPM}% util`
-                      : `Your team cap = ${Math.round(poolsByDiv[projView]?.pm.efte||0)} ${projView} PMs × ${projectsPerPM} × ${utilPM}% util`
+                      ? `Your team cap = ${Math.round(totalPMs)} PMs × ${projectsPerPM} concurrent × ${utilPM}% util`
+                      : `Your team cap = ${Math.round(poolsByDiv[projView]?.pm.efte||0)} ${projView} PMs × ${projectsPerPM} concurrent × ${utilPM}% util`
                     }
                   </p>
                 </div>
@@ -694,7 +755,7 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Info boxes — update PM count based on view */}
+              {/* Capacity model summary */}
               <div className="grid grid-cols-3 gap-3 mb-4">
                 <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-center">
                   <p className="text-xs text-blue-500 font-semibold">Oliver Forecast Demand</p>
@@ -706,7 +767,6 @@ export default function App() {
                   <p className="text-lg font-black text-green-700">Perm + Flying (from file)</p>
                   <p className="text-xs text-green-400">Oliver's own capacity projection</p>
                 </div>
-                {/* FIX: PM count updates per division view */}
                 <div className="bg-purple-50 border border-purple-100 rounded-xl p-3 text-center">
                   <p className="text-xs text-purple-600 font-semibold">Your Team Capacity</p>
                   <p className="text-lg font-black text-purple-700">
@@ -715,7 +775,7 @@ export default function App() {
                       : `${Math.round(poolsByDiv[projView]?.pm.efte||0)} ${projView} PMs × ${projectsPerPM}`
                     }
                   </p>
-                  <p className="text-xs text-purple-400">adjust slider to model scenarios</p>
+                  <p className="text-xs text-purple-400">{availableHoursPerPM}h avail ÷ {hoursPerProject}h/proj = {projectsPerPM} concurrent</p>
                 </div>
               </div>
 
@@ -751,50 +811,44 @@ export default function App() {
                             <span className={`text-right font-bold ${reqRag}`}>{row.teamReqPerPM}</span>
                             <span className={`text-right font-bold ${row.teamGap>=0?"text-green-600":"text-red-500"}`}>{row.teamGap>=0?`+${row.teamGap.toLocaleString()}`:row.teamGap.toLocaleString()}</span>
                           </div>
-                          <div className="w-full bg-gray-100 rounded h-1.5 mt-0.5">
-                            <div className={`h-1.5 rounded ${barC}`} style={{width:`${Math.min(row.teamCoverPct,100)}%`}}/>
-                          </div>
-                          {row.teamGap<0&&(
-                            <p className="text-xs text-red-500 text-right mt-0.5">Shortfall: {Math.abs(row.teamGap).toLocaleString()} · need ~{Math.ceil(Math.abs(row.teamGap)/projectsPerPM)} more PMs</p>
-                          )}
+                          <div className="w-full bg-gray-100 rounded h-1.5 mt-0.5"><div className={`h-1.5 rounded ${barC}`} style={{width:`${Math.min(row.teamCoverPct,100)}%`}}/></div>
+                          {row.teamGap<0&&<p className="text-xs text-red-500 text-right mt-0.5">Shortfall: {Math.abs(row.teamGap).toLocaleString()} · need ~{Math.ceil(Math.abs(row.teamGap)/projectsPerPM)} more PMs</p>}
                         </div>
                       );
                     })}
                   </div>
                   <div className="mt-3 pt-3 border-t border-gray-100 grid grid-cols-2 gap-3 text-xs">
                     <div className="space-y-1">
-                      <p className="font-bold text-gray-600">Column guide</p>
-                      <p><span className="font-semibold text-blue-600">Demand</span> = Oliver weekly × weeks (monthly total)</p>
-                      <p><span className="font-semibold text-green-600">Oliver cap</span> = Oliver perm + flying PM capacity (monthly)</p>
-                      <p><span className="font-semibold text-purple-600">Team cap</span> = {Math.round(totalPMs)} PMs × {projectsPerPM} concurrent × {utilPM}% util</p>
+                      <p className="font-bold text-gray-600">PM capacity model</p>
+                      <p>{pmHoursPerWeek}h/week × {utilPM}% util = <strong>{availableHoursPerPM}h productive</strong></p>
+                      <p>{availableHoursPerPM}h ÷ {hoursPerProject}h/project = <strong className="text-blue-600">{projectsPerPM} concurrent projects/PM</strong></p>
+                      <p>{Math.round(totalPMs)} PMs × {projectsPerPM} = <strong className="text-purple-600">{totalTeamPMCap.toLocaleString()} projects/mo cap</strong></p>
                     </div>
                     <div className="space-y-1">
                       <p className="font-bold text-gray-600">Jun peak</p>
                       <p>Weekly demand: <strong className="text-blue-600">{FM[5].weeklyForecast} projects</strong></p>
                       <p>Monthly: <strong className="text-blue-600">{FM[5].monthlyForecast.toLocaleString()}</strong> ({FM[5].weeksInMonth} weeks)</p>
-                      <p>Oliver cap: <strong className="text-green-600">{(FM[5].permPMMonthly+FM[5].flyPMMonthly).toLocaleString()}</strong> · Team: <strong className="text-purple-600">{Math.round(totalPMs*projectsPerPM*(utilPM/100)).toLocaleString()}</strong></p>
+                      <p>Req/PM: <strong className={+((FM[5].monthlyForecast/totalPMs)||0).toFixed(1)>projectsPerPM?"text-red-600":"text-green-600"}>{totalPMs>0?(FM[5].monthlyForecast/totalPMs).toFixed(1):"—"}</strong> vs your threshold of <strong>{projectsPerPM}</strong></p>
                     </div>
                   </div>
                 </>
               ):(
-                // ── DIVISION VIEW — FIX: uses division-specific PM count ──
                 <>
                   <div className="grid grid-cols-5 gap-1 mb-1 text-xs font-bold text-gray-400 uppercase">
-                    <p>Month</p><p className="text-right">Wkly/PM</p><p className="text-right text-blue-500">Monthly</p>
+                    <p>Month</p><p className="text-right">Wkly/Req</p><p className="text-right text-blue-500">Monthly</p>
                     <p className="text-right text-purple-500">Team cap</p><p className="text-right">Cover %</p>
                   </div>
                   <div className="h-px bg-gray-100 mb-2"/>
                   <div className="space-y-1.5">
                     {FM.map(row=>{
-                      // FIX: use the PM count for THIS division only
-                      const divPMs = poolsByDiv[projView]?.pm.efte || 0;
+                      const divPMs = poolsByDiv[projView]?.pm.efte||0;
                       const monthlyDiv = Math.round(row[DIV_PROJ_KEY[projView]] * row.weeksInMonth);
                       const divTeamCap = Math.round(divPMs * projectsPerPM * (utilPM/100));
                       const pct = monthlyDiv>0?Math.round((divTeamCap/monthlyDiv)*100):0;
-                      const ragTx=pct>=100?"text-green-600":pct>=75?"text-amber-600":"text-red-600";
-                      const barC=pct>=100?"bg-green-500":pct>=75?"bg-amber-400":"bg-red-400";
                       const reqPerPM = divPMs>0?(monthlyDiv/divPMs).toFixed(1):"—";
-                      const reqRag = +reqPerPM>projectsPerPM?"text-red-600":"text-green-600";
+                      const ragTx=pct>=100?"text-green-600":pct>=75?"text-amber-600":"text-red-600";
+                      const reqRag=+reqPerPM>projectsPerPM?"text-red-600":"text-green-600";
+                      const barC=pct>=100?"bg-green-500":pct>=75?"bg-amber-400":"bg-red-400";
                       return(
                         <div key={row.month}>
                           <div className="grid grid-cols-5 gap-1 items-center text-xs">
@@ -805,14 +859,13 @@ export default function App() {
                             <span className={`text-right font-bold ${ragTx}`}>{pct}%</span>
                           </div>
                           <div className="w-full bg-gray-100 rounded h-1 mt-0.5"><div className={`h-1 rounded ${barC}`} style={{width:`${Math.min(pct,100)}%`}}/></div>
-                          {divTeamCap<monthlyDiv&&<p className="text-xs text-red-500 text-right mt-0.5">Gap: {(monthlyDiv-divTeamCap).toLocaleString()} · need ~{Math.ceil((monthlyDiv-divTeamCap)/projectsPerPM)} more PMs</p>}
+                          {divTeamCap<monthlyDiv&&<p className="text-xs text-red-500 text-right mt-0.5">Gap: {(monthlyDiv-divTeamCap).toLocaleString()}</p>}
                         </div>
                       );
                     })}
                   </div>
                   <p className="text-xs text-gray-400 mt-3">
-                    {projView} monthly = weekly × weeks · team cap = {Math.round(poolsByDiv[projView]?.pm.efte||0)} {projView} PMs × {projectsPerPM} proj/PM × {utilPM}% util
-                    · Req/PM = monthly demand ÷ {projView} PM count (red if above {projectsPerPM} concurrent threshold)
+                    {projView}: {Math.round(poolsByDiv[projView]?.pm.efte||0)} PMs × {projectsPerPM} concurrent ({availableHoursPerPM}h ÷ {hoursPerProject}h/proj) × {utilPM}% = {Math.round((poolsByDiv[projView]?.pm.efte||0)*projectsPerPM*(utilPM/100)).toLocaleString()} cap/mo
                   </p>
                 </>
               )}
@@ -831,12 +884,7 @@ export default function App() {
                       const isAuto=div==="LLD"?row.lldAuto:div==="LDB"?row.ldbAuto:row.ppdAuto;
                       const ragTx=pct>=200?"text-green-600":pct>=100?"text-green-500":pct>=75?"text-amber-600":"text-red-600";
                       const barC=pct>=100?"bg-green-500":pct>=75?"bg-amber-400":"bg-red-400";
-                      return(
-                        <div key={row.month}>
-                          <div className="grid grid-cols-4 gap-1 items-center text-xs"><span className="font-semibold text-gray-700 flex items-center gap-1">{row.month}{isAuto&&autoScenario==="with"&&<span className="text-green-500 text-xs">🤖</span>}</span><span className="text-right text-gray-500">{target.toLocaleString()}</span><span className="text-right font-semibold text-gray-700">{cap.toLocaleString()}</span><span className={`text-right font-bold ${ragTx}`}>{pct}%</span></div>
-                          <div className="w-full bg-gray-100 rounded h-1 mt-0.5"><div className={`h-1 rounded ${barC}`} style={{width:`${Math.min(pct,100)}%`}}/></div>
-                        </div>
-                      );
+                      return(<div key={row.month}><div className="grid grid-cols-4 gap-1 items-center text-xs"><span className="font-semibold text-gray-700 flex items-center gap-1">{row.month}{isAuto&&autoScenario==="with"&&<span className="text-green-500">🤖</span>}</span><span className="text-right text-gray-500">{target.toLocaleString()}</span><span className="text-right font-semibold text-gray-700">{cap.toLocaleString()}</span><span className={`text-right font-bold ${ragTx}`}>{pct}%</span></div><div className="w-full bg-gray-100 rounded h-1 mt-0.5"><div className={`h-1 rounded ${barC}`} style={{width:`${Math.min(pct,100)}%`}}/></div></div>);
                     })}
                   </div>
                 </div>
@@ -896,113 +944,31 @@ export default function App() {
         {activeTab==="🤖 Automation"&&(
           <div className="space-y-4">
             <div className="grid grid-cols-3 gap-4">
-              {[{label:"Jan–Mar",sub:"Manual only",cap:monthlyCap[0]?.manualTotal||0,color:"bg-gray-600",note:`${manualRate} assets/day`},
-                {label:"Apr–May",sub:"LLD automated",cap:monthlyCap[3]?.total||0,color:"bg-green-600",note:`LLD blended: ${Math.round(autoConfig.LLD.simplePct*autoQCRate+(1-autoConfig.LLD.simplePct)*manualRate)}/day`},
-                {label:"Jun–Dec",sub:"All automated",cap:monthlyCap[5]?.total||0,color:"bg-emerald-600",note:"All divisions blended"}
-              ].map(s=>(<div key={s.label} className={`${s.color} text-white rounded-2xl p-5`}><p className="text-xs font-bold uppercase opacity-70 mb-1">{s.label}</p><p className="text-xs opacity-60 mb-2">{s.sub}</p><p className="text-3xl font-black">{s.cap.toLocaleString()}</p><p className="text-xs opacity-70 mt-1">assets/month</p><p className="text-xs opacity-50 mt-2">{s.note}</p></div>))}
+              {[{label:"Jan–Mar",sub:"Manual only",cap:monthlyCap[0]?.manualTotal||0,color:"bg-gray-600",note:`${manualRate} assets/day`},{label:"Apr–May",sub:"LLD automated",cap:monthlyCap[3]?.total||0,color:"bg-green-600",note:`LLD blended: ${Math.round(autoConfig.LLD.simplePct*autoQCRate+(1-autoConfig.LLD.simplePct)*manualRate)}/day`},{label:"Jun–Dec",sub:"All automated",cap:monthlyCap[5]?.total||0,color:"bg-emerald-600",note:"All divisions blended"}].map(s=>(<div key={s.label} className={`${s.color} text-white rounded-2xl p-5`}><p className="text-xs font-bold uppercase opacity-70 mb-1">{s.label}</p><p className="text-xs opacity-60 mb-2">{s.sub}</p><p className="text-3xl font-black">{s.cap.toLocaleString()}</p><p className="text-xs opacity-70 mt-1">assets/month</p><p className="text-xs opacity-50 mt-2">{s.note}</p></div>))}
             </div>
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-sm font-bold text-gray-800">🤖 Automation Settings</h2>
-                <div className="flex items-center gap-3"><span className="text-xs text-gray-500">Automation</span><button onClick={()=>setAutoEnabled(v=>!v)} className={`relative inline-flex h-6 w-11 items-center rounded-full ${autoEnabled?"bg-green-500":"bg-gray-300"}`}><span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${autoEnabled?"translate-x-6":"translate-x-1"}`}/></button><span className={`text-xs font-bold ${autoEnabled?"text-green-600":"text-gray-400"}`}>{autoEnabled?"Enabled":"Disabled"}</span></div>
-              </div>
-              <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-4">
-                <div className="flex items-center justify-between mb-2"><div><p className="text-sm font-bold text-green-800">QC Rate</p><p className="text-xs text-green-600">Assets/designer/day via canvas · vs manual: {manualRate}/day · {(autoQCRate/manualRate).toFixed(1)}×</p></div><div className="bg-green-600 text-white rounded-xl px-5 py-2 text-center"><p className="text-xs opacity-80">QC/day</p><p className="text-3xl font-black">{autoQCRate}</p></div></div>
-                <input type="range" min={50} max={500} step={25} value={autoQCRate} onChange={e=>{setAutoQCRate(+e.target.value);saveSettings({autoQCRate:+e.target.value});}} className="w-full accent-green-600"/>
-              </div>
-              <div className="grid grid-cols-3 gap-4">
-                {DIVS.map(div=>{
-                  const cfg=autoConfig[div], br=Math.round(cfg.simplePct*autoQCRate+(1-cfg.simplePct)*manualRate);
-                  return(
-                    <div key={div} className="rounded-xl border border-gray-200 p-4" style={{borderColor:DIV_COLORS[div]+"66"}}>
-                      <div className="flex items-center justify-between mb-3"><p className="text-sm font-black" style={{color:DIV_COLORS[div]}}>{div}</p>{cfg.goLiveMonth!=="Off"&&<span className="text-xs px-2 py-0.5 rounded-full font-bold text-white" style={{background:DIV_COLORS[div]}}>Go-live: {cfg.goLiveMonth}</span>}</div>
-                      <div className="mb-3"><label className="text-xs font-semibold text-gray-600 block mb-1">Go-Live Month</label><div className="flex gap-1 flex-wrap">{GO_LIVE_OPTIONS.map(m=>(<button key={m} onClick={()=>updateAuto(div,"goLiveMonth",m)} className={`px-2 py-0.5 text-xs rounded font-semibold ${cfg.goLiveMonth===m?"text-white":"bg-gray-100 text-gray-500"}`} style={cfg.goLiveMonth===m?{background:DIV_COLORS[div]}:{}}>{m}</button>))}</div></div>
-                      <div className="mb-3"><div className="flex justify-between mb-1"><label className="text-xs font-semibold text-gray-600">Simple %</label><span className="text-sm font-black" style={{color:DIV_COLORS[div]}}>{Math.round(cfg.simplePct*100)}%</span></div><input type="range" min={0} max={1} step={0.05} value={cfg.simplePct} onChange={e=>updateAuto(div,"simplePct",+e.target.value)} className="w-full" style={{accentColor:DIV_COLORS[div]}}/></div>
-                      <div className="bg-gray-50 rounded-lg p-3 text-center"><p className="text-xs text-gray-500 mb-1">Blended rate</p><p className="text-2xl font-black" style={{color:DIV_COLORS[div]}}>{br}</p><p className="text-xs text-gray-400">assets/day</p></div>
-                    </div>
-                  );
-                })}
+              <div className="flex items-center justify-between mb-4"><h2 className="text-sm font-bold text-gray-800">🤖 Automation Settings</h2><div className="flex items-center gap-3"><span className="text-xs text-gray-500">Automation</span><button onClick={()=>setAutoEnabled(v=>!v)} className={`relative inline-flex h-6 w-11 items-center rounded-full ${autoEnabled?"bg-green-500":"bg-gray-300"}`}><span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${autoEnabled?"translate-x-6":"translate-x-1"}`}/></button><span className={`text-xs font-bold ${autoEnabled?"text-green-600":"text-gray-400"}`}>{autoEnabled?"Enabled":"Disabled"}</span></div></div>
+              <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-4"><div className="flex items-center justify-between mb-2"><div><p className="text-sm font-bold text-green-800">QC Rate</p><p className="text-xs text-green-600">Assets/designer/day via canvas · vs manual: {manualRate}/day · {(autoQCRate/manualRate).toFixed(1)}×</p></div><div className="bg-green-600 text-white rounded-xl px-5 py-2 text-center"><p className="text-xs opacity-80">QC/day</p><p className="text-3xl font-black">{autoQCRate}</p></div></div><input type="range" min={50} max={500} step={25} value={autoQCRate} onChange={e=>{setAutoQCRate(+e.target.value);saveSettings({autoQCRate:+e.target.value});}} className="w-full accent-green-600"/></div>
+              <div className="grid grid-cols-3 gap-4">{DIVS.map(div=>{const cfg=autoConfig[div],br=Math.round(cfg.simplePct*autoQCRate+(1-cfg.simplePct)*manualRate);return(<div key={div} className="rounded-xl border border-gray-200 p-4" style={{borderColor:DIV_COLORS[div]+"66"}}><div className="flex items-center justify-between mb-3"><p className="text-sm font-black" style={{color:DIV_COLORS[div]}}>{div}</p>{cfg.goLiveMonth!=="Off"&&<span className="text-xs px-2 py-0.5 rounded-full font-bold text-white" style={{background:DIV_COLORS[div]}}>Go-live: {cfg.goLiveMonth}</span>}</div><div className="mb-3"><label className="text-xs font-semibold text-gray-600 block mb-1">Go-Live Month</label><div className="flex gap-1 flex-wrap">{GO_LIVE_OPTIONS.map(m=>(<button key={m} onClick={()=>updateAuto(div,"goLiveMonth",m)} className={`px-2 py-0.5 text-xs rounded font-semibold ${cfg.goLiveMonth===m?"text-white":"bg-gray-100 text-gray-500"}`} style={cfg.goLiveMonth===m?{background:DIV_COLORS[div]}:{}}>{m}</button>))}</div></div><div className="mb-3"><div className="flex justify-between mb-1"><label className="text-xs font-semibold text-gray-600">Simple %</label><span className="text-sm font-black" style={{color:DIV_COLORS[div]}}>{Math.round(cfg.simplePct*100)}%</span></div><input type="range" min={0} max={1} step={0.05} value={cfg.simplePct} onChange={e=>updateAuto(div,"simplePct",+e.target.value)} className="w-full" style={{accentColor:DIV_COLORS[div]}}/></div><div className="bg-gray-50 rounded-lg p-3 text-center"><p className="text-xs text-gray-500 mb-1">Blended rate</p><p className="text-2xl font-black" style={{color:DIV_COLORS[div]}}>{br}</p><p className="text-xs text-gray-400">assets/day</p></div></div>);})}
               </div>
             </div>
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-              <h2 className="text-sm font-bold text-gray-800 mb-4">Project Type — Automation Eligibility</h2>
-              <div className="grid grid-cols-3 gap-3">
-                {mix.map(m=>{
-                  const pt=PT_BASE.find(p=>p.id===m.id); if(!pt) return null;
-                  return(
-                    <div key={m.id} className={`rounded-xl border p-3 ${m.autoEligible?"border-green-200 bg-green-50":"border-gray-200 bg-gray-50"}`}>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2 flex-1 min-w-0"><div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{background:pt.color}}/><span className="text-xs font-semibold text-gray-800 truncate">{pt.label}</span></div>
-                        <div className="flex items-center gap-1.5 ml-2 flex-shrink-0">
-                          <span className={`text-xs font-bold ${m.autoEligible?"text-green-600":"text-gray-400"}`}>{m.autoEligible?"🤖":"Manual"}</span>
-                          <button onClick={()=>toggleAuto(m.id)} className={`relative inline-flex h-5 w-9 items-center rounded-full ${m.autoEligible?"bg-green-500":"bg-gray-300"}`}><span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${m.autoEligible?"translate-x-4":"translate-x-0.5"}`}/></button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-              <h2 className="text-sm font-bold text-gray-800 mb-1">Capacity Step-Change — Jan–Dec 2026</h2>
-              <p className="text-xs text-gray-400 mb-3">Grey = manual (stops at go-live) · Green = with automation (starts at go-live)</p>
-              <ResponsiveContainer width="100%" height={280}>
-                <ComposedChart data={forecastChartData} margin={{top:5,right:20,left:0,bottom:5}}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
-                  <XAxis dataKey="month" tick={{fontSize:11}}/><YAxis tick={{fontSize:11}} tickFormatter={v=>v>=1000?`${(v/1000).toFixed(0)}k`:v}/>
-                  <Tooltip formatter={(v,n)=>[typeof v==="number"?v.toLocaleString():v,n]}/><Legend/>
-                  <Bar dataKey="gt" name="Asset Target" fill="#6366f1" opacity={0.6} radius={[3,3,0,0]}/>
-                  <Line type="stepAfter" dataKey="preAutoCapacity"  name={`Manual (${manualRate}/day)`} stroke="#9ca3af" strokeWidth={2.5} strokeDasharray="5 5" dot={false} connectNulls={false}/>
-                  <Line type="stepAfter" dataKey="postAutoCapacity" name="Capacity with Automation" stroke="#22c55e" strokeWidth={2.5} dot={false} connectNulls={false}/>
-                </ComposedChart>
-              </ResponsiveContainer>
-            </div>
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5"><h2 className="text-sm font-bold text-gray-800 mb-4">Project Type — Automation Eligibility</h2><div className="grid grid-cols-3 gap-3">{mix.map(m=>{const pt=PT_BASE.find(p=>p.id===m.id);if(!pt)return null;return(<div key={m.id} className={`rounded-xl border p-3 ${m.autoEligible?"border-green-200 bg-green-50":"border-gray-200 bg-gray-50"}`}><div className="flex items-center justify-between"><div className="flex items-center gap-2 flex-1 min-w-0"><div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{background:pt.color}}/><span className="text-xs font-semibold text-gray-800 truncate">{pt.label}</span></div><div className="flex items-center gap-1.5 ml-2 flex-shrink-0"><span className={`text-xs font-bold ${m.autoEligible?"text-green-600":"text-gray-400"}`}>{m.autoEligible?"🤖":"Manual"}</span><button onClick={()=>toggleAuto(m.id)} className={`relative inline-flex h-5 w-9 items-center rounded-full ${m.autoEligible?"bg-green-500":"bg-gray-300"}`}><span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${m.autoEligible?"translate-x-4":"translate-x-0.5"}`}/></button></div></div></div>);})}</div></div>
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5"><h2 className="text-sm font-bold text-gray-800 mb-1">Capacity Step-Change — Jan–Dec 2026</h2><p className="text-xs text-gray-400 mb-3">Grey = manual (stops at go-live) · Green = with automation (starts at go-live)</p><ResponsiveContainer width="100%" height={280}><ComposedChart data={forecastChartData} margin={{top:5,right:20,left:0,bottom:5}}><CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/><XAxis dataKey="month" tick={{fontSize:11}}/><YAxis tick={{fontSize:11}} tickFormatter={v=>v>=1000?`${(v/1000).toFixed(0)}k`:v}/><Tooltip formatter={(v,n)=>[typeof v==="number"?v.toLocaleString():v,n]}/><Legend/><Bar dataKey="gt" name="Asset Target" fill="#6366f1" opacity={0.6} radius={[3,3,0,0]}/><Line type="stepAfter" dataKey="preAutoCapacity" name={`Manual (${manualRate}/day)`} stroke="#9ca3af" strokeWidth={2.5} strokeDasharray="5 5" dot={false} connectNulls={false}/><Line type="stepAfter" dataKey="postAutoCapacity" name="Capacity with Automation" stroke="#22c55e" strokeWidth={2.5} dot={false} connectNulls={false}/></ComposedChart></ResponsiveContainer></div>
           </div>
         )}
 
         {/* ══ VOLUME ══ */}
         {activeTab==="🗂 Volume"&&(
           <div className="space-y-4">
-            <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5">
-              <p className="text-sm font-bold text-blue-800">📅 Project intake — {period.label}</p>
-              <p className="text-xs text-blue-500 mt-0.5">Adjust project counts and assets/brief per division. Toggle automation eligibility in the 🤖 tab.</p>
-            </div>
+            <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5"><p className="text-sm font-bold text-blue-800">📅 Project intake — {period.label}</p><p className="text-xs text-blue-500 mt-0.5">Adjust project counts and assets/brief per division. Toggle automation eligibility in the 🤖 tab.</p></div>
             <div className="grid grid-cols-3 gap-4">
-              {DIVS.map(div=>{
-                const da=mixAnalysis.find(x=>x.div===div), p=activePools[div];
-                const uP=uc(da.tPM,p.pm), uD=uc(da.tDes,p.des), rP=rag(uP), rD=rag(uD);
-                return(
-                  <div key={div} className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4">
-                    <div className="flex justify-between mb-2"><h3 className="font-black text-gray-900">{div}</h3><div className="text-right"><p className="text-2xl font-black text-blue-700">{da.tProj}</p><p className="text-xs text-gray-400">~{Math.round(da.tProj/period.months)}/mo</p></div></div>
-                    <p className="text-xs text-indigo-700 font-bold mb-3">~{da.tAssets.toLocaleString()} assets</p>
-                    {[{l:"PM",u:uP,r:rP},{l:"Designer",u:uD,r:rD}].map(x=>(<div key={x.l} className="mb-2"><div className="flex justify-between text-xs mb-0.5"><span className="text-gray-600">{x.l}</span><span className={`font-bold ${x.r.tx}`}>{x.u}%</span></div><div className="w-full bg-gray-100 rounded h-2"><div className={`h-2 rounded ${x.r.bar}`} style={{width:`${Math.min(x.u,100)}%`}}/></div></div>))}
-                  </div>
-                );
-              })}
+              {DIVS.map(div=>{const da=mixAnalysis.find(x=>x.div===div),p=activePools[div];const uP=uc(da.tPM,p.pm),uD=uc(da.tDes,p.des),rP=rag(uP),rD=rag(uD);return(<div key={div} className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4"><div className="flex justify-between mb-2"><h3 className="font-black text-gray-900">{div}</h3><div className="text-right"><p className="text-2xl font-black text-blue-700">{da.tProj}</p><p className="text-xs text-gray-400">~{Math.round(da.tProj/period.months)}/mo</p></div></div><p className="text-xs text-indigo-700 font-bold mb-3">~{da.tAssets.toLocaleString()} assets</p>{[{l:"PM",u:uP,r:rP},{l:"Designer",u:uD,r:rD}].map(x=>(<div key={x.l} className="mb-2"><div className="flex justify-between text-xs mb-0.5"><span className="text-gray-600">{x.l}</span><span className={`font-bold ${x.r.tx}`}>{x.u}%</span></div><div className="w-full bg-gray-100 rounded h-2"><div className={`h-2 rounded ${x.r.bar}`} style={{width:`${Math.min(x.u,100)}%`}}/></div></div>))}</div>);})}
             </div>
-
-            {/* ── INTAKE TABLE — FIXED: no React.Fragment ── */}
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-bold text-gray-800">Adjust Intake & Asset Counts — {period.label}</h2>
-                {hasSupabase&&<span className="text-xs text-green-600 font-semibold">✓ Auto-saved</span>}
-              </div>
+              <div className="flex items-center justify-between mb-3"><h2 className="text-sm font-bold text-gray-800">Adjust Intake & Asset Counts — {period.label}</h2>{hasSupabase&&<span className="text-xs text-green-600 font-semibold">✓ Auto-saved</span>}</div>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
-                  <thead>
-                    <tr className="bg-gray-50 text-gray-500 uppercase">
-                      <th className="px-3 py-2 text-left">Project Type</th>
-                      <th className="px-3 py-2 text-center">Auto?</th>
-                      <th className="px-3 py-2 text-center" style={{color:DIV_COLORS.LDB}}>LDB proj</th>
-                      <th className="px-3 py-2 text-center" style={{color:DIV_COLORS.LDB}}>LDB assets</th>
-                      <th className="px-3 py-2 text-center" style={{color:DIV_COLORS.PPD}}>PPD proj</th>
-                      <th className="px-3 py-2 text-center" style={{color:DIV_COLORS.PPD}}>PPD assets</th>
-                      <th className="px-3 py-2 text-center" style={{color:DIV_COLORS.LLD}}>LLD proj</th>
-                      <th className="px-3 py-2 text-center" style={{color:DIV_COLORS.LLD}}>LLD assets</th>
-                      <th className="px-3 py-2 text-center">Total</th>
-                      <th className="px-3 py-2 text-center">Assets</th>
-                    </tr>
-                  </thead>
+                  <thead><tr className="bg-gray-50 text-gray-500 uppercase"><th className="px-3 py-2 text-left">Project Type</th><th className="px-3 py-2 text-center">Auto?</th><th className="px-3 py-2 text-center" style={{color:DIV_COLORS.LDB}}>LDB proj</th><th className="px-3 py-2 text-center" style={{color:DIV_COLORS.LDB}}>LDB assets</th><th className="px-3 py-2 text-center" style={{color:DIV_COLORS.PPD}}>PPD proj</th><th className="px-3 py-2 text-center" style={{color:DIV_COLORS.PPD}}>PPD assets</th><th className="px-3 py-2 text-center" style={{color:DIV_COLORS.LLD}}>LLD proj</th><th className="px-3 py-2 text-center" style={{color:DIV_COLORS.LLD}}>LLD assets</th><th className="px-3 py-2 text-center">Total</th><th className="px-3 py-2 text-center">Assets</th></tr></thead>
                   <tbody>
                     {mix.map(m=>{
                       const pt=PT_BASE.find(p=>p.id===m.id);
@@ -1012,46 +978,12 @@ export default function App() {
                         <tr key={m.id} className={`border-t border-gray-100 hover:bg-gray-50 ${m.autoEligible?"bg-green-50":""}`}>
                           <td className="px-3 py-2"><div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full" style={{background:pt?.color||"#666"}}/><span className="font-semibold">{pt?.label||m.id}</span></div></td>
                           <td className="px-3 py-2 text-center"><span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${m.autoEligible?"bg-green-100 text-green-700":"bg-gray-100 text-gray-400"}`}>{m.autoEligible?"🤖":"Manual"}</span></td>
-
-                          {/* LDB — NO React.Fragment, plain td pairs */}
-                          <td className="px-3 py-2 text-center">
-                            <div className="flex items-center justify-center gap-1">
-                              <button onClick={()=>updateMixCount(m.id,"LDB",m.LDB-1)} className="w-5 h-5 rounded bg-gray-200 text-xs font-bold">−</button>
-                              <span className="w-6 text-center font-black" style={{color:DIV_COLORS.LDB}}>{m.LDB}</span>
-                              <button onClick={()=>updateMixCount(m.id,"LDB",m.LDB+1)} className="w-5 h-5 rounded bg-gray-200 text-xs font-bold">+</button>
-                            </div>
-                          </td>
-                          <td className="px-3 py-2 text-center">
-                            <input type="number" min="1" value={m.assetsLDB} onChange={e=>updateMixAssets(m.id,"assetsLDB",+e.target.value)} className="w-16 text-center text-xs font-bold border rounded px-1 py-1 focus:outline-none" style={{borderColor:DIV_COLORS.LDB+"66",color:DIV_COLORS.LDB}}/>
-                            <p className="text-xs text-gray-400">{(m.assetsLDB*m.LDB).toLocaleString()}</p>
-                          </td>
-
-                          {/* PPD */}
-                          <td className="px-3 py-2 text-center">
-                            <div className="flex items-center justify-center gap-1">
-                              <button onClick={()=>updateMixCount(m.id,"PPD",m.PPD-1)} className="w-5 h-5 rounded bg-gray-200 text-xs font-bold">−</button>
-                              <span className="w-6 text-center font-black" style={{color:DIV_COLORS.PPD}}>{m.PPD}</span>
-                              <button onClick={()=>updateMixCount(m.id,"PPD",m.PPD+1)} className="w-5 h-5 rounded bg-gray-200 text-xs font-bold">+</button>
-                            </div>
-                          </td>
-                          <td className="px-3 py-2 text-center">
-                            <input type="number" min="1" value={m.assetsPPD} onChange={e=>updateMixAssets(m.id,"assetsPPD",+e.target.value)} className="w-16 text-center text-xs font-bold border rounded px-1 py-1 focus:outline-none" style={{borderColor:DIV_COLORS.PPD+"66",color:DIV_COLORS.PPD}}/>
-                            <p className="text-xs text-gray-400">{(m.assetsPPD*m.PPD).toLocaleString()}</p>
-                          </td>
-
-                          {/* LLD */}
-                          <td className="px-3 py-2 text-center">
-                            <div className="flex items-center justify-center gap-1">
-                              <button onClick={()=>updateMixCount(m.id,"LLD",m.LLD-1)} className="w-5 h-5 rounded bg-gray-200 text-xs font-bold">−</button>
-                              <span className="w-6 text-center font-black" style={{color:DIV_COLORS.LLD}}>{m.LLD}</span>
-                              <button onClick={()=>updateMixCount(m.id,"LLD",m.LLD+1)} className="w-5 h-5 rounded bg-gray-200 text-xs font-bold">+</button>
-                            </div>
-                          </td>
-                          <td className="px-3 py-2 text-center">
-                            <input type="number" min="1" value={m.assetsLLD} onChange={e=>updateMixAssets(m.id,"assetsLLD",+e.target.value)} className="w-16 text-center text-xs font-bold border rounded px-1 py-1 focus:outline-none" style={{borderColor:DIV_COLORS.LLD+"66",color:DIV_COLORS.LLD}}/>
-                            <p className="text-xs text-gray-400">{(m.assetsLLD*m.LLD).toLocaleString()}</p>
-                          </td>
-
+                          <td className="px-3 py-2 text-center"><div className="flex items-center justify-center gap-1"><button onClick={()=>updateMixCount(m.id,"LDB",m.LDB-1)} className="w-5 h-5 rounded bg-gray-200 text-xs font-bold">−</button><span className="w-6 text-center font-black" style={{color:DIV_COLORS.LDB}}>{m.LDB}</span><button onClick={()=>updateMixCount(m.id,"LDB",m.LDB+1)} className="w-5 h-5 rounded bg-gray-200 text-xs font-bold">+</button></div></td>
+                          <td className="px-3 py-2 text-center"><input type="number" min="1" value={m.assetsLDB} onChange={e=>updateMixAssets(m.id,"assetsLDB",+e.target.value)} className="w-16 text-center text-xs font-bold border rounded px-1 py-1 focus:outline-none" style={{borderColor:DIV_COLORS.LDB+"66",color:DIV_COLORS.LDB}}/><p className="text-xs text-gray-400">{(m.assetsLDB*m.LDB).toLocaleString()}</p></td>
+                          <td className="px-3 py-2 text-center"><div className="flex items-center justify-center gap-1"><button onClick={()=>updateMixCount(m.id,"PPD",m.PPD-1)} className="w-5 h-5 rounded bg-gray-200 text-xs font-bold">−</button><span className="w-6 text-center font-black" style={{color:DIV_COLORS.PPD}}>{m.PPD}</span><button onClick={()=>updateMixCount(m.id,"PPD",m.PPD+1)} className="w-5 h-5 rounded bg-gray-200 text-xs font-bold">+</button></div></td>
+                          <td className="px-3 py-2 text-center"><input type="number" min="1" value={m.assetsPPD} onChange={e=>updateMixAssets(m.id,"assetsPPD",+e.target.value)} className="w-16 text-center text-xs font-bold border rounded px-1 py-1 focus:outline-none" style={{borderColor:DIV_COLORS.PPD+"66",color:DIV_COLORS.PPD}}/><p className="text-xs text-gray-400">{(m.assetsPPD*m.PPD).toLocaleString()}</p></td>
+                          <td className="px-3 py-2 text-center"><div className="flex items-center justify-center gap-1"><button onClick={()=>updateMixCount(m.id,"LLD",m.LLD-1)} className="w-5 h-5 rounded bg-gray-200 text-xs font-bold">−</button><span className="w-6 text-center font-black" style={{color:DIV_COLORS.LLD}}>{m.LLD}</span><button onClick={()=>updateMixCount(m.id,"LLD",m.LLD+1)} className="w-5 h-5 rounded bg-gray-200 text-xs font-bold">+</button></div></td>
+                          <td className="px-3 py-2 text-center"><input type="number" min="1" value={m.assetsLLD} onChange={e=>updateMixAssets(m.id,"assetsLLD",+e.target.value)} className="w-16 text-center text-xs font-bold border rounded px-1 py-1 focus:outline-none" style={{borderColor:DIV_COLORS.LLD+"66",color:DIV_COLORS.LLD}}/><p className="text-xs text-gray-400">{(m.assetsLLD*m.LLD).toLocaleString()}</p></td>
                           <td className="px-3 py-2 text-center font-black text-blue-700">{rowTot}</td>
                           <td className="px-3 py-2 text-center font-bold text-indigo-700">{rowAssets.toLocaleString()}</td>
                         </tr>
@@ -1087,42 +1019,9 @@ export default function App() {
             </div>
             {calcPt&&calcSla&&(
               <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-                <div className="flex items-center justify-between mb-4">
-                  <div><h2 className="text-base font-black" style={{color:calcPt.color}}>{calcPt.label}</h2><div className="flex items-center gap-2 mt-0.5"><p className="text-xs text-gray-500"><strong>{calcCplx}</strong> · <strong>{calcAssetBand}</strong></p><span className={`text-xs px-2 py-0.5 rounded-full font-bold ${calcPt.autoEligible?"bg-green-100 text-green-700":"bg-gray-100 text-gray-500"}`}>{calcPt.autoEligible?"🤖 Auto eligible":"Manual only"}</span>{hasOv(calcType)&&<span className="bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full text-xs">Custom SLA</span>}</div></div>
-                  <div className="flex gap-2 items-center">{hasOv(calcType)&&<button onClick={()=>resetOv(calcType)} className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-orange-50 text-orange-600 border border-orange-200">↩ Reset</button>}<div className="bg-blue-600 text-white rounded-xl px-4 py-2 text-center"><p className="text-xs opacity-80">Total SLA</p><p className="text-2xl font-black">{calcSla.total}</p><p className="text-xs opacity-70">days</p></div></div>
-                </div>
-                <div className="space-y-2">
-                  {STAGE_META.map(sm=>{
-                    const active=stageActive(calcPt,sm.key), defVal=calcSla.defaults[sm.key]??0, curVal=calcSla.breakdown[sm.key]??0, isOv=slaOv[calcType]?.[sm.key]!==undefined;
-                    return(
-                      <div key={sm.key} className={`rounded-xl border p-3 ${active?"border-blue-200 bg-blue-50":"border-gray-100 bg-gray-50 opacity-50"}`}>
-                        <div className="flex items-center gap-3">
-                          <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${active?"bg-blue-500 text-white":"bg-gray-200 text-gray-400"}`}>{active?"✓":"–"}</div>
-                          <div className="flex-1 min-w-0"><div className="flex items-center gap-2 flex-wrap"><span className={`text-sm font-bold ${active?"text-blue-900":"text-gray-400"}`}>{sm.label}</span>{isOv&&<span className="text-xs bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full">custom</span>}</div><p className="text-xs text-gray-500 mt-0.5">{sm.desc}</p></div>
-                          {active?(
-                            <div className="flex items-center gap-2 flex-shrink-0">
-                              {isOv&&<span className="text-xs text-gray-400 line-through">{defVal}d</span>}
-                              <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg px-2 py-1">
-                                <button onClick={()=>setOv(calcType,sm.key,curVal-1)} className="w-6 h-6 rounded bg-gray-100 text-sm font-bold flex items-center justify-center">−</button>
-                                <input type="number" min="0" value={curVal} onChange={e=>setOv(calcType,sm.key,e.target.value)} className={`w-12 text-center font-black text-lg border-none outline-none bg-transparent ${isOv?"text-orange-600":"text-blue-700"}`}/>
-                                <button onClick={()=>setOv(calcType,sm.key,curVal+1)} className="w-6 h-6 rounded bg-gray-100 text-sm font-bold flex items-center justify-center">+</button>
-                              </div>
-                              <span className="text-xs text-gray-400">days</span>
-                              {isOv&&<button onClick={()=>setOv(calcType,sm.key,defVal)} className="text-xs text-orange-500">↩</button>}
-                            </div>
-                          ):(
-                            <span className="text-xs text-gray-300 bg-gray-100 rounded-lg px-3 py-1.5 flex-shrink-0">Not Required</span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-                <div className="mt-4 grid grid-cols-3 gap-3">
-                  <div className="bg-blue-600 rounded-xl p-3 text-white text-center"><p className="text-xs opacity-80">Total SLA</p><p className="text-2xl font-black">{calcSla.total}d</p></div>
-                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-center"><p className="text-xs text-blue-500">PM Days</p><p className="text-2xl font-black text-blue-700">{calcSla.pmDays}</p></div>
-                  <div className="bg-purple-50 border border-purple-200 rounded-xl p-3 text-center"><p className="text-xs text-purple-500">Designer Days</p><p className="text-2xl font-black text-purple-700">{calcSla.desDays}</p></div>
-                </div>
+                <div className="flex items-center justify-between mb-4"><div><h2 className="text-base font-black" style={{color:calcPt.color}}>{calcPt.label}</h2><div className="flex items-center gap-2 mt-0.5"><p className="text-xs text-gray-500"><strong>{calcCplx}</strong> · <strong>{calcAssetBand}</strong></p><span className={`text-xs px-2 py-0.5 rounded-full font-bold ${calcPt.autoEligible?"bg-green-100 text-green-700":"bg-gray-100 text-gray-500"}`}>{calcPt.autoEligible?"🤖 Auto eligible":"Manual only"}</span>{hasOv(calcType)&&<span className="bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full text-xs">Custom SLA</span>}</div></div><div className="flex gap-2 items-center">{hasOv(calcType)&&<button onClick={()=>resetOv(calcType)} className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-orange-50 text-orange-600 border border-orange-200">↩ Reset</button>}<div className="bg-blue-600 text-white rounded-xl px-4 py-2 text-center"><p className="text-xs opacity-80">Total SLA</p><p className="text-2xl font-black">{calcSla.total}</p><p className="text-xs opacity-70">days</p></div></div></div>
+                <div className="space-y-2">{STAGE_META.map(sm=>{const active=stageActive(calcPt,sm.key),defVal=calcSla.defaults[sm.key]??0,curVal=calcSla.breakdown[sm.key]??0,isOv=slaOv[calcType]?.[sm.key]!==undefined;return(<div key={sm.key} className={`rounded-xl border p-3 ${active?"border-blue-200 bg-blue-50":"border-gray-100 bg-gray-50 opacity-50"}`}><div className="flex items-center gap-3"><div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${active?"bg-blue-500 text-white":"bg-gray-200 text-gray-400"}`}>{active?"✓":"–"}</div><div className="flex-1 min-w-0"><div className="flex items-center gap-2 flex-wrap"><span className={`text-sm font-bold ${active?"text-blue-900":"text-gray-400"}`}>{sm.label}</span>{isOv&&<span className="text-xs bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full">custom</span>}</div><p className="text-xs text-gray-500 mt-0.5">{sm.desc}</p></div>{active?(<div className="flex items-center gap-2 flex-shrink-0">{isOv&&<span className="text-xs text-gray-400 line-through">{defVal}d</span>}<div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg px-2 py-1"><button onClick={()=>setOv(calcType,sm.key,curVal-1)} className="w-6 h-6 rounded bg-gray-100 text-sm font-bold flex items-center justify-center">−</button><input type="number" min="0" value={curVal} onChange={e=>setOv(calcType,sm.key,e.target.value)} className={`w-12 text-center font-black text-lg border-none outline-none bg-transparent ${isOv?"text-orange-600":"text-blue-700"}`}/><button onClick={()=>setOv(calcType,sm.key,curVal+1)} className="w-6 h-6 rounded bg-gray-100 text-sm font-bold flex items-center justify-center">+</button></div><span className="text-xs text-gray-400">days</span>{isOv&&<button onClick={()=>setOv(calcType,sm.key,defVal)} className="text-xs text-orange-500">↩</button>}</div>):(<span className="text-xs text-gray-300 bg-gray-100 rounded-lg px-3 py-1.5 flex-shrink-0">Not Required</span>)}</div></div>);})}</div>
+                <div className="mt-4 grid grid-cols-3 gap-3"><div className="bg-blue-600 rounded-xl p-3 text-white text-center"><p className="text-xs opacity-80">Total SLA</p><p className="text-2xl font-black">{calcSla.total}d</p></div><div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-center"><p className="text-xs text-blue-500">PM Days</p><p className="text-2xl font-black text-blue-700">{calcSla.pmDays}</p></div><div className="bg-purple-50 border border-purple-200 rounded-xl p-3 text-center"><p className="text-xs text-purple-500">Designer Days</p><p className="text-2xl font-black text-purple-700">{calcSla.desDays}</p></div></div>
               </div>
             )}
           </div>
@@ -1132,20 +1031,8 @@ export default function App() {
         {activeTab==="👥 Team Manager"&&(
           <div className="space-y-4">
             {!hasSupabase&&<div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700 font-semibold">⚠️ Offline mode — add Supabase credentials to persist changes.</div>}
-            {pendingStarters.length>0&&(
-              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
-                <h3 className="text-sm font-bold text-amber-700 mb-2">⏳ Pending Starters — {pendingStarters.length}</h3>
-                <table className="w-full text-xs"><thead><tr className="text-amber-600 uppercase"><th className="px-3 py-1 text-left">Name</th><th className="px-3 py-1 text-left">Role</th><th className="px-3 py-1 text-center">Div</th><th className="px-3 py-1 text-center">Start</th><th className="px-3 py-1 text-center">Cap %</th></tr></thead>
-                <tbody>{pendingStarters.map(p=>{const f=availFrac(p.startDate,p.endDate,WD);return(<tr key={p.id} className="border-t border-amber-100"><td className="px-3 py-1.5 font-semibold">{p.name}</td><td className="px-3 py-1.5 text-gray-600">{p.role}</td><td className="px-3 py-1.5 text-center"><span className="font-bold text-xs px-2 py-0.5 rounded-full" style={{background:DIV_COLORS[p.division]+"22",color:DIV_COLORS[p.division]}}>{p.division}</span></td><td className="px-3 py-1.5 text-center font-bold text-amber-700">{startLbl(p.startDate)}</td><td className="px-3 py-1.5 text-center font-bold text-green-600">{Math.round(f*100)}%</td></tr>);})}</tbody></table>
-              </div>
-            )}
-            {pendingLeavers.length>0&&(
-              <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
-                <h3 className="text-sm font-bold text-red-700 mb-2">🔴 Planned Leavers — {pendingLeavers.length}</h3>
-                <table className="w-full text-xs"><thead><tr className="text-red-600 uppercase"><th className="px-3 py-1 text-left">Name</th><th className="px-3 py-1 text-left">Role</th><th className="px-3 py-1 text-center">Div</th><th className="px-3 py-1 text-center">Exit</th><th className="px-3 py-1 text-center">Remaining %</th></tr></thead>
-                <tbody>{pendingLeavers.map(p=>{const f=availFrac(p.startDate,p.endDate,WD);return(<tr key={p.id} className="border-t border-red-100"><td className="px-3 py-1.5 font-semibold">{p.name}</td><td className="px-3 py-1.5 text-gray-600">{p.role}</td><td className="px-3 py-1.5 text-center"><span className="font-bold text-xs px-2 py-0.5 rounded-full" style={{background:DIV_COLORS[p.division]+"22",color:DIV_COLORS[p.division]}}>{p.division}</span></td><td className="px-3 py-1.5 text-center font-bold text-red-700">{endLbl(p.endDate)}</td><td className="px-3 py-1.5 text-center font-bold text-amber-600">{Math.round(f*100)}%</td></tr>);})}</tbody></table>
-              </div>
-            )}
+            {pendingStarters.length>0&&(<div className="bg-amber-50 border border-amber-200 rounded-2xl p-4"><h3 className="text-sm font-bold text-amber-700 mb-2">⏳ Pending Starters — {pendingStarters.length}</h3><table className="w-full text-xs"><thead><tr className="text-amber-600 uppercase"><th className="px-3 py-1 text-left">Name</th><th className="px-3 py-1 text-left">Role</th><th className="px-3 py-1 text-center">Div</th><th className="px-3 py-1 text-center">Start</th><th className="px-3 py-1 text-center">Cap %</th></tr></thead><tbody>{pendingStarters.map(p=>{const f=availFrac(p.startDate,p.endDate,WD);return(<tr key={p.id} className="border-t border-amber-100"><td className="px-3 py-1.5 font-semibold">{p.name}</td><td className="px-3 py-1.5 text-gray-600">{p.role}</td><td className="px-3 py-1.5 text-center"><span className="font-bold text-xs px-2 py-0.5 rounded-full" style={{background:DIV_COLORS[p.division]+"22",color:DIV_COLORS[p.division]}}>{p.division}</span></td><td className="px-3 py-1.5 text-center font-bold text-amber-700">{startLbl(p.startDate)}</td><td className="px-3 py-1.5 text-center font-bold text-green-600">{Math.round(f*100)}%</td></tr>);})}</tbody></table></div>)}
+            {pendingLeavers.length>0&&(<div className="bg-red-50 border border-red-200 rounded-2xl p-4"><h3 className="text-sm font-bold text-red-700 mb-2">🔴 Planned Leavers — {pendingLeavers.length}</h3><table className="w-full text-xs"><thead><tr className="text-red-600 uppercase"><th className="px-3 py-1 text-left">Name</th><th className="px-3 py-1 text-left">Role</th><th className="px-3 py-1 text-center">Div</th><th className="px-3 py-1 text-center">Exit</th><th className="px-3 py-1 text-center">Remaining %</th></tr></thead><tbody>{pendingLeavers.map(p=>{const f=availFrac(p.startDate,p.endDate,WD);return(<tr key={p.id} className="border-t border-red-100"><td className="px-3 py-1.5 font-semibold">{p.name}</td><td className="px-3 py-1.5 text-gray-600">{p.role}</td><td className="px-3 py-1.5 text-center"><span className="font-bold text-xs px-2 py-0.5 rounded-full" style={{background:DIV_COLORS[p.division]+"22",color:DIV_COLORS[p.division]}}>{p.division}</span></td><td className="px-3 py-1.5 text-center font-bold text-red-700">{endLbl(p.endDate)}</td><td className="px-3 py-1.5 text-center font-bold text-amber-600">{Math.round(f*100)}%</td></tr>);})}</tbody></table></div>)}
             <div className="grid grid-cols-4 gap-3">
               <div className="bg-gray-900 text-white rounded-xl p-3 text-center"><p className="text-xs opacity-70 uppercase">Active</p><p className="text-3xl font-black">{capacityRoster.length}</p><p className="text-xs opacity-50">{roster.filter(p=>p.removed).length} removed · {pendingStarters.length} joining · {pendingLeavers.length} leaving</p></div>
               {DIVS.map(div=>{const hc=poolsByDiv[div];return(<div key={div} className="rounded-xl border border-gray-200 bg-white p-3"><p className="text-xs font-black uppercase mb-2" style={{color:DIV_COLORS[div]}}>{div}</p><div className="grid grid-cols-2 gap-1 text-center"><div className="bg-blue-50 rounded-lg p-1.5"><p className="text-xs text-blue-500">PMs</p><p className="font-black text-blue-700 text-lg">{hc.pm.total}</p><p className="text-xs text-blue-400">{hc.pm.fte}F·{hc.pm.fl}FL</p></div><div className="bg-purple-50 rounded-lg p-1.5"><p className="text-xs text-purple-500">Designers</p><p className="font-black text-purple-700 text-lg">{hc.des.total}</p><p className="text-xs text-purple-400">{hc.des.fte}F·{hc.des.fl}FL</p></div></div></div>);})}
@@ -1204,19 +1091,14 @@ export default function App() {
                 </table>
               </div>
             </div>
-            {roster.filter(p=>p.removed).length>0&&(
-              <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
-                <h3 className="text-sm font-bold text-red-700 mb-2">Removed ({roster.filter(p=>p.removed).length})</h3>
-                <div className="flex flex-wrap gap-2">{roster.filter(p=>p.removed).map(p=>(<div key={p.id} className="flex items-center gap-2 bg-white border border-red-200 rounded-lg px-3 py-1.5"><span className="text-xs font-semibold">{p.name}</span><span className="text-xs text-gray-400">{p.division}</span><button onClick={()=>restorePerson(p.id)} className="text-xs text-green-600 font-bold">↩</button></div>))}</div>
-              </div>
-            )}
+            {roster.filter(p=>p.removed).length>0&&(<div className="bg-red-50 border border-red-200 rounded-2xl p-4"><h3 className="text-sm font-bold text-red-700 mb-2">Removed ({roster.filter(p=>p.removed).length})</h3><div className="flex flex-wrap gap-2">{roster.filter(p=>p.removed).map(p=>(<div key={p.id} className="flex items-center gap-2 bg-white border border-red-200 rounded-lg px-3 py-1.5"><span className="text-xs font-semibold">{p.name}</span><span className="text-xs text-gray-400">{p.division}</span><button onClick={()=>restorePerson(p.id)} className="text-xs text-green-600 font-bold">↩</button></div>))}</div></div>)}
           </div>
         )}
       </div>
 
       <p className="text-center text-xs text-gray-400 py-4">
-        L'Oréal eComm · {globalHC.des.total} designers · {manualRate}/day · {projectsPerPM} proj/PM
-        · Total PM cap: {Math.round(totalPMs*projectsPerPM*(utilPM/100)).toLocaleString()}/mo
+        L'Oréal eComm · {globalHC.des.total} designers · {manualRate}/day
+        · {availableHoursPerPM}h ÷ {hoursPerProject}h/proj = {projectsPerPM} concurrent · PM cap: {totalTeamPMCap.toLocaleString()}/mo
         · {dbStatus==="connected"?"🟢 Supabase":"⚪ Offline"}
       </p>
     </div>
