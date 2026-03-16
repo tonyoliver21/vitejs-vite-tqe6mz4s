@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, Line } from "recharts";
+import { Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, Line } from "recharts";
 
 const SUPABASE_URL = "https://zezyfyyiijqvgplivrgl.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InplenlmeXlpaWpxdmdwbGl2cmdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM0MTUxODgsImV4cCI6MjA4ODk5MTE4OH0.mWZzylhc1b9AY_P4Zvrx2F5_P4mb1cmKOuXB2kqG_tc";
@@ -336,107 +336,96 @@ export default function App(){
     return{month:fm.month,total:autoT,lld,ldb,ppd,manualTotal:manT,lldAuto:isAutoLive("LLD",fm.month,autoConfig),ldbAuto:isAutoLive("LDB",fm.month,autoConfig),ppdAuto:isAutoLive("PPD",fm.month,autoConfig),anyAuto,preAutoCapacity:anyAuto?null:manT,postAutoCapacity:anyAuto?autoT:null};
   }),[poolsByDiv,utilDes,autoEnabled,autoScenario,autoConfig,qcMinsPerAsset,manualRate]);
 
-  // ── DESIGNER WORKLOAD — v18.5.1 FIXED ────────────────────────────────────
-  // Root cause of v18.5 bug: Volume tab stores PERIOD totals (e.g. 1-month counts)
-  // but we need to distribute across all 12 FM months.
-  // Fix: scale period totals to annual equivalents first (× 12/period.months),
-  // then distribute monthly using FM project-count seasonal weights.
+  // ── DESIGNER WORKLOAD v18.6 ───────────────────────────────────────────────
   //
-  // QA checks embedded as comments:
-  // 1. Annual total of all monthly values should ≈ annual Volume tab total
-  // 2. Pre-go-live months: all assets count as manual (no master setup, no QC)
-  // 3. Post-go-live months: auto-eligible → master setup + QC; non-auto → manual
-  // 4. Supply = globalHC.des.efte × 21d × 8h × utilDes% (same as desSupplyHrsPerMonth)
+  // DESIGN PRINCIPLE (fixed from v18.5.x):
+  // ─────────────────────────────────────
+  // VOLUME (total assets per month) = FM forecast  fm.ldb + fm.ppd + fm.lld
+  //   → This is the authoritative source. Always correct, real numbers.
+  //
+  // SPLIT (auto vs manual ratio) = Volume tab mix autoEligible flags
+  //   → For each division: auto ratio = auto-eligible assets / total assets
+  //   → This determines WHAT PROPORTION is automated, not how many total assets
+  //
+  // MASTER PROJECTS = derived from FM project counts × auto ratio × auto flag
+  //   → Uses fm.ldbProj / ppdProj / lldProj × weeksInMonth to get monthly project count
+  //   → Auto projects = monthly projects × auto ratio for that division
+  //
+  // QA CHECKS:
+  // Jan (pre-LLD go-live): anyAutoLive=false → masterHrs=0, qcHrs=0, all assets manual ✓
+  // Jun (all live): split applies, bars show all three colours ✓
+  // Jun total demand = (auto_proj×mastersPerProj×hrsPerMaster) + (auto_assets×qcMins/60) + (manual_assets/rate×8)
+  // Jun manual assets with default config (all divs 50% auto) ≈ 25272/2 = 12,636 assets
+  //   → manual hours ≈ 12,636/25×8 = 4,044h
+  // Supply = 83 designers × 21d × 8h × 82% = 11,434h
   // ─────────────────────────────────────────────────────────────────────────
   const designerWorkload=useMemo(()=>{
 
-    // Scale factor: Volume tab stores "period" counts — convert to annual equivalents
-    // e.g. if period = 3 months, multiply by 4 to get annual; if 12 months, multiply by 1
-    const annualScale = 12 / period.months;
-
-    // From Volume tab: compute annual-equivalent totals split by auto-eligibility
-    const divTotals = DIVS.reduce((acc, div) => {
-      const assetKey = ASSET_KEY[div];
-      // Annual auto project count = period total × scale factor
-      const autoProjAnnual    = mix.filter(m => m.autoEligible).reduce((s, m) => s + (m[div] || 0), 0) * annualScale;
-      // Annual auto asset count  = period total × scale factor
-      const autoAssetsAnnual  = mix.filter(m => m.autoEligible).reduce((s, m) => s + ((m[div] || 0) * (m[assetKey] || 0)), 0) * annualScale;
-      // Annual manual asset count = period total × scale factor
-      const manualAssetsAnnual= mix.filter(m => !m.autoEligible).reduce((s, m) => s + ((m[div] || 0) * (m[assetKey] || 0)), 0) * annualScale;
-      acc[div] = { autoProjAnnual, autoAssetsAnnual, manualAssetsAnnual };
+    // Step 1: Compute auto ratio per division from Volume tab
+    // auto ratio = auto-eligible total assets / all total assets (for that division)
+    const autoRatioByDiv=DIVS.reduce((acc,div)=>{
+      const assetKey=ASSET_KEY[div];
+      const totalAssets=mix.reduce((s,m)=>s+((m[div]||0)*(m[assetKey]||0)),0);
+      const autoAssets=mix.filter(m=>m.autoEligible).reduce((s,m)=>s+((m[div]||0)*(m[assetKey]||0)),0);
+      acc[div]=totalAssets>0?autoAssets/totalAssets:0;
       return acc;
-    }, {});
+    },{});
 
-    // Annual FM project totals per division — used as seasonal distribution weights
-    // These are the real monthly rhythms from the Oliver forecast
-    const annualFMProj = {
-      LDB: FM.reduce((s, fm) => s + fm.ldbProj * fm.weeksInMonth, 0),
-      PPD: FM.reduce((s, fm) => s + fm.ppdProj * fm.weeksInMonth, 0),
-      LLD: FM.reduce((s, fm) => s + fm.lldProj * fm.weeksInMonth, 0),
-    };
+    // Step 2: Compute average assets per auto project per division from Volume tab
+    // Used to back-calculate project count from asset count for master setup
+    const avgAssetsPerAutoProj=DIVS.reduce((acc,div)=>{
+      const assetKey=ASSET_KEY[div];
+      const autoProjs=mix.filter(m=>m.autoEligible).reduce((s,m)=>s+(m[div]||0),0);
+      const autoAssets=mix.filter(m=>m.autoEligible).reduce((s,m)=>s+((m[div]||0)*(m[assetKey]||0)),0);
+      acc[div]=autoProjs>0?autoAssets/autoProjs:50; // fallback 50 assets/project
+      return acc;
+    },{});
 
-    return FM.map(fm => {
-      // Monthly weight = this month's FM project count / annual FM total
-      // This gives the correct seasonal distribution (Jun peaks, Aug troughs)
-      const weight = {
-        LDB: annualFMProj.LDB > 0 ? (fm.ldbProj * fm.weeksInMonth) / annualFMProj.LDB : 1/12,
-        PPD: annualFMProj.PPD > 0 ? (fm.ppdProj * fm.weeksInMonth) / annualFMProj.PPD : 1/12,
-        LLD: annualFMProj.LLD > 0 ? (fm.lldProj * fm.weeksInMonth) / annualFMProj.LLD : 1/12,
-      };
+    return FM.map(fm=>{
+      // Is automation live for each division this month?
+      const lldLive=isAutoLive("LLD",fm.month,autoConfig);
+      const ldbLive=isAutoLive("LDB",fm.month,autoConfig);
+      const ppdLive=isAutoLive("PPD",fm.month,autoConfig);
+      const anyAutoLive=lldLive||ldbLive||ppdLive;
 
-      // Distribute annual Volume tab totals to this month using FM seasonal weights
-      let rawAutoProj = 0, rawAutoAssets = 0, rawManualAssets = 0;
-      DIVS.forEach(div => {
-        rawAutoProj     += divTotals[div].autoProjAnnual    * weight[div];
-        rawAutoAssets   += divTotals[div].autoAssetsAnnual  * weight[div];
-        rawManualAssets += divTotals[div].manualAssetsAnnual* weight[div];
-      });
+      // Step 3: FM assets are the ground truth for total volume this month
+      // Auto assets per division = FM total × auto ratio × (live flag)
+      const lldAutoAssets = lldLive ? Math.round(fm.lld * autoRatioByDiv.LLD) : 0;
+      const ldbAutoAssets = ldbLive ? Math.round(fm.ldb * autoRatioByDiv.LDB) : 0;
+      const ppdAutoAssets = ppdLive ? Math.round(fm.ppd * autoRatioByDiv.PPD) : 0;
+      const totalAutoAssets = lldAutoAssets + ldbAutoAssets + ppdAutoAssets;
 
-      const scaledAutoProj     = Math.round(rawAutoProj);
-      const scaledAutoAssets   = Math.round(rawAutoAssets);
-      const scaledManualAssets = Math.round(rawManualAssets);
+      // Manual assets = remainder (FM total minus live auto assets)
+      const totalManualAssets = fm.gt - totalAutoAssets;
 
-      // Is automation live for ANY division in this month?
-      const anyAutoLive = isAutoLive("LLD", fm.month, autoConfig)
-                       || isAutoLive("LDB", fm.month, autoConfig)
-                       || isAutoLive("PPD", fm.month, autoConfig);
+      // Step 4: Auto project count per division = auto assets / avg assets per auto project
+      // Used to calculate master setup hours
+      const lldAutoProjs = lldLive && avgAssetsPerAutoProj.LLD > 0
+        ? Math.round(lldAutoAssets / avgAssetsPerAutoProj.LLD) : 0;
+      const ldbAutoProjs = ldbLive && avgAssetsPerAutoProj.LDB > 0
+        ? Math.round(ldbAutoAssets / avgAssetsPerAutoProj.LDB) : 0;
+      const ppdAutoProjs = ppdLive && avgAssetsPerAutoProj.PPD > 0
+        ? Math.round(ppdAutoAssets / avgAssetsPerAutoProj.PPD) : 0;
+      const totalAutoProjs = lldAutoProjs + ldbAutoProjs + ppdAutoProjs;
 
-      // ── Stream A: Master setup ──────────────────────────────────────────
-      // Only incurred after at least one division goes live.
-      // QA: should be 0 for Jan–Mar with default config (LLD goes live Apr).
-      const masterSetupHrs = anyAutoLive
-        ? Math.round(scaledAutoProj * mastersPerProj * hrsPerMaster)
-        : 0;
+      // Stream A1: Master setup hours = auto projects × masters per project × hrs per master
+      const masterSetupHrs = Math.round(totalAutoProjs * mastersPerProj * hrsPerMaster);
 
-      // ── Stream A: QC review ─────────────────────────────────────────────
-      // Only auto assets after go-live.
-      // QA: should be 0 for Jan–Mar with default config.
-      const liveAutoAssets = anyAutoLive ? scaledAutoAssets : 0;
-      const qcHrs = Math.round(liveAutoAssets * qcMinsPerAsset / 60);
+      // Stream A2: QC hours = auto assets × mins per asset ÷ 60
+      const qcHrs = Math.round(totalAutoAssets * qcMinsPerAsset / 60);
 
-      // ── Stream B: Manual production ─────────────────────────────────────
-      // Always includes non-auto project type assets.
-      // Pre-go-live: auto-eligible type assets also run manually (no automation yet).
-      // QA: Jan–Mar should show ALL assets as manual.
-      const manualAssets = anyAutoLive
-        ? scaledManualAssets                        // post-go-live: non-auto types only
-        : scaledManualAssets + scaledAutoAssets;    // pre-go-live: all types are manual
-      const manualProdHrs = Math.round((manualAssets / manualRate) * HOURS_PER_DAY);
+      // Stream B: Manual production hours = manual assets ÷ rate × hrs per day
+      const manualProdHrs = Math.round((totalManualAssets / manualRate) * HOURS_PER_DAY);
 
       const totalDemandHrs = masterSetupHrs + qcHrs + manualProdHrs;
-
-      // Supply = same formula as desSupplyHrsPerMonth (consistent with Section C header)
       const supplyHrs = desSupplyHrsPerMonth;
-
-      const utilPct = supplyHrs > 0
-        ? Math.round((totalDemandHrs / supplyHrs) * 100)
-        : 0;
+      const utilPct = supplyHrs > 0 ? Math.round((totalDemandHrs / supplyHrs) * 100) : 0;
 
       return {
         month: fm.month,
-        autoProj: scaledAutoProj,
-        totalAutoAssets: liveAutoAssets,
-        totalManualAssets: manualAssets,
+        autoProj: totalAutoProjs,
+        totalAutoAssets,
+        totalManualAssets,
         masterSetupHrs,
         qcHrs,
         manualProdHrs,
@@ -447,8 +436,7 @@ export default function App(){
         anyAuto: anyAutoLive,
       };
     });
-  // Dependencies: everything that feeds the calculation
-  }, [mix, period.months, autoConfig, mastersPerProj, hrsPerMaster, qcMinsPerAsset, manualRate, desSupplyHrsPerMonth]);
+  },[mix, autoConfig, mastersPerProj, hrsPerMaster, qcMinsPerAsset, manualRate, desSupplyHrsPerMonth]);
 
   const pmAnalysis=useMemo(()=>FM.map(fm=>{
     const teamCap=Math.round(totalPMs*projectsPerPM*(utilPM/100));
@@ -471,10 +459,9 @@ export default function App(){
   const pendingLeavers=useMemo(()=>capacityRoster.filter(p=>p.endDate&&p.endDate!=="never"&&new Date(p.endDate)>new Date()).sort((a,b)=>new Date(a.endDate)-new Date(b.endDate)),[capacityRoster]);
   const designerChartData=designerWorkload.map(d=>({month:d.month,"Master Setup":d.masterSetupHrs,"QC Review":d.qcHrs,"Manual Production":d.manualProdHrs,Supply:d.supplyHrs}));
 
-  // RAG functions
-  // ragU: utilisation — green = LOW (under capacity), red = HIGH (over capacity)
+  // RAG: utilisation — green=low (comfortable), red=high (over capacity)
   const ragU=u=>u<=85?{color:"#22C55E",bg:"#F0FDF4",text:"#15803D"}:u<=100?{color:"#F59E0B",bg:"#FFFBEB",text:"#B45309"}:{color:"#EF4444",bg:"#FEF2F2",text:"#B91C1C"};
-  // ragCov: coverage — green = HIGH (meets target), red = LOW (cannot meet target)
+  // RAG: coverage — green=high (meets target), red=low (cannot meet)
   const ragCov=p=>p>=100?{color:"#22C55E",bg:"#F0FDF4",text:"#15803D"}:p>=75?{color:"#F59E0B",bg:"#FFFBEB",text:"#B45309"}:{color:"#EF4444",bg:"#FEF2F2",text:"#B91C1C"};
 
   const TAB_META={
@@ -502,8 +489,7 @@ export default function App(){
             <div className="flex items-center gap-2">
               <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${dbStatus==="connected"?"text-green-700":"text-gray-500"}`} style={{background:dbStatus==="connected"?"#F0FDF4":"#F3F4F6"}}>
                 <div className={`w-1.5 h-1.5 rounded-full ${dbStatus==="connected"?"bg-green-500":"bg-gray-400"}`}/>
-                {dbStatus==="connected"?"Synced":dbStatus==="offline"?"Offline":"Error"}
-                {saving&&<span className="opacity-60">·saving</span>}
+                {dbStatus==="connected"?"Synced":dbStatus==="offline"?"Offline":"Error"}{saving&&<span className="opacity-60">·saving</span>}
               </div>
               {pendingStarters.length>0&&<Badge color="amber" size="xs">⏳ {pendingStarters.length}</Badge>}
               {pendingLeavers.length>0&&<Badge color="red" size="xs">🔴 {pendingLeavers.length}</Badge>}
@@ -551,8 +537,7 @@ export default function App(){
             <div>
               <SectionHeader number="A" title="Team Snapshot by Division" subtitle="How many PMs and Integrated Designers do we have in each division right now?"
                 what="Headcount by division and contract type. All capacity calculations flow from these numbers."
-                insight={{label:"Keep current",text:"Figures come from the Team tab. Changes there recalculate everything automatically."}}
-                color="#1D1D1F"/>
+                insight={{label:"Keep current",text:"Figures come from the Team tab. Changes there recalculate everything automatically."}} color="#1D1D1F"/>
               <div className="grid grid-cols-3 gap-4">
                 {DIVS.map(div=>{const hc=poolsByDiv[div],mc=monthlyCap[0],dc=div==="LDB"?mc?.ldb:div==="PPD"?mc?.ppd:mc?.lld;return(
                   <Card key={div}>
@@ -570,13 +555,12 @@ export default function App(){
             <div>
               <SectionHeader number="B" title="Project Manager Capacity vs Forecast"
                 subtitle="Can our PMs handle the number of projects L'Oréal is forecasting each month?"
-                what={`Each PM carries ${projectsPerPM} concurrent projects (${availHrsPM}h ÷ ${hoursPerProject}h/project). Compares L'Oréal's expectation against what our team can cover.`}
-                insight={{label:"Red months",text:"demand exceeds PM capacity. Reduce Hrs/project in settings to model higher concurrency, or flag a headcount gap."}}
-                color="#3B82F6"/>
+                what={`Each PM carries ${projectsPerPM} concurrent projects (${availHrsPM}h ÷ ${hoursPerProject}h/project).`}
+                insight={{label:"Red months",text:"demand exceeds PM capacity. Reduce Hrs/project in settings or flag a headcount gap."}} color="#3B82F6"/>
               <Card padding="p-0">
                 <div className="px-6 pt-5 pb-4 border-b border-gray-50">
                   <CardDescriptor title="Three lines compared month by month"
-                    description="Client Forecast = L'Oréal's expectation (Oliver weekly × weeks). Oliver PM Cap = what Oliver's own forecast assumed. Our PM Cap = what your named team can deliver."
+                    description="Client Forecast = L'Oréal's expectation. Oliver PM Cap = what Oliver's own forecast assumed. Our PM Cap = what your named team can deliver."
                     howToRead="Coverage % = Our PM Cap ÷ Client Forecast. Green ≥100% = covered. Amber ≥75% = near limit. Red <75% = shortfall."
                     accent="#3B82F6"/>
                 </div>
@@ -585,21 +569,18 @@ export default function App(){
                     <span>Month</span><span className="text-right text-blue-500">Client Forecast</span><span className="text-right text-green-600">Oliver PM Cap</span><span className="text-right text-violet-600">Our PM Cap</span><span className="text-right">Coverage</span>
                   </div>
                   <div className="divide-y divide-gray-50 -mx-6 px-6">
-                    {pmAnalysis.map(row=>{
-                      const rg=ragCov(row.teamCoverPct);
-                      return(
-                        <div key={row.month} className="py-3 hover:bg-gray-50 -mx-6 px-6 transition-colors">
-                          <div className="grid grid-cols-5 gap-4 items-center text-sm">
-                            <span className="font-medium text-gray-900">{row.month}<span className="text-gray-400 font-normal ml-1.5 text-xs">{row.weeksInMonth}w</span></span>
-                            <span className="text-right font-semibold text-blue-700">{row.demand.toLocaleString()}</span>
-                            <span className="text-right text-green-700">{row.oliverTotalCap.toLocaleString()}<span className="ml-1.5 text-xs font-medium" style={{color:ragCov(row.oliverCoverPct).text}}>{row.oliverCoverPct}%</span></span>
-                            <span className="text-right text-violet-700">{row.teamCap.toLocaleString()}<span className="text-xs text-gray-400 ml-1">({row.teamReqPerPM}/PM)</span></span>
-                            <div className="flex items-center justify-end gap-2"><div className="w-16 bg-gray-100 rounded-full h-1.5"><div className="h-1.5 rounded-full" style={{width:`${Math.min(row.teamCoverPct,100)}%`,background:rg.color}}/></div><span className="text-xs font-semibold w-10 text-right" style={{color:rg.text}}>{row.teamCoverPct}%</span></div>
-                          </div>
-                          {row.teamGap<0&&<div className="mt-1.5 flex items-center gap-2"><span className="text-xs text-red-500">Shortfall: {Math.abs(row.teamGap).toLocaleString()} projects</span><span className="text-xs font-semibold text-red-600">· ~{Math.ceil(Math.abs(row.teamGap)/projectsPerPM)} more PMs needed</span></div>}
+                    {pmAnalysis.map(row=>{const rg=ragCov(row.teamCoverPct);return(
+                      <div key={row.month} className="py-3 hover:bg-gray-50 -mx-6 px-6 transition-colors">
+                        <div className="grid grid-cols-5 gap-4 items-center text-sm">
+                          <span className="font-medium text-gray-900">{row.month}<span className="text-gray-400 font-normal ml-1.5 text-xs">{row.weeksInMonth}w</span></span>
+                          <span className="text-right font-semibold text-blue-700">{row.demand.toLocaleString()}</span>
+                          <span className="text-right text-green-700">{row.oliverTotalCap.toLocaleString()}<span className="ml-1.5 text-xs font-medium" style={{color:ragCov(row.oliverCoverPct).text}}>{row.oliverCoverPct}%</span></span>
+                          <span className="text-right text-violet-700">{row.teamCap.toLocaleString()}<span className="text-xs text-gray-400 ml-1">({row.teamReqPerPM}/PM)</span></span>
+                          <div className="flex items-center justify-end gap-2"><div className="w-16 bg-gray-100 rounded-full h-1.5"><div className="h-1.5 rounded-full" style={{width:`${Math.min(row.teamCoverPct,100)}%`,background:rg.color}}/></div><span className="text-xs font-semibold w-10 text-right" style={{color:rg.text}}>{row.teamCoverPct}%</span></div>
                         </div>
-                      );
-                    })}
+                        {row.teamGap<0&&<div className="mt-1.5 flex items-center gap-2"><span className="text-xs text-red-500">Shortfall: {Math.abs(row.teamGap).toLocaleString()} projects</span><span className="text-xs font-semibold text-red-600">· ~{Math.ceil(Math.abs(row.teamGap)/projectsPerPM)} more PMs needed</span></div>}
+                      </div>
+                    );})}
                   </div>
                 </div>
                 <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl">
@@ -610,15 +591,14 @@ export default function App(){
 
             <div>
               <SectionHeader number="C" title="Designer Capacity — Hours Model"
-                subtitle="Are our designers over or under capacity based on the Volume tab project mix?"
-                what="Source: Volume tab project types, scaled to annual totals and distributed across months using Oliver forecast seasonal weights. Auto-eligible types → master setup + QC (after go-live). Non-auto types → manual always. Pre-go-live, all types run manually."
-                insight={{label:"Seasonally weighted",text:"Project demand peaks in Jun/Jul and troughs in Feb/Aug, matching the Oliver forecast distribution. Changing the Volume tab project mix or go-live dates will update these figures immediately."}}
-                color="#8B5CF6"/>
+                subtitle="Are our designers over or under capacity each month?"
+                what="Total asset volume comes directly from the FM forecast (fm.ldb + fm.ppd + fm.lld). The Volume tab determines the auto/manual split ratio. Auto assets → master setup + QC hours. Manual assets → production hours."
+                insight={{label:"Volume source",text:"FM forecast is the authoritative asset volume. Volume tab only controls the split between auto-eligible and manual project types — not the total."}} color="#8B5CF6"/>
               <div className="grid grid-cols-3 gap-4 mb-6">
                 {[
-                  {color:"#6366F1",dot:"A1",label:"Master Setup",desc:`${mastersPerProj} masters × ${hrsPerMaster}h = ${totalMasterHrs}h per auto project · only after go-live`},
-                  {color:"#22C55E",dot:"A2",label:"QC Review",desc:`${qcMinsPerAsset} min/asset = ${autoQCRate} assets/day · auto assets only · only after go-live`},
-                  {color:"#F97316",dot:"B",label:"Manual Production",desc:`${manualRate} assets/day · non-auto types always · auto types pre-go-live fall back here`},
+                  {color:"#6366F1",dot:"A1",label:"Master Setup",desc:`Auto projects × ${mastersPerProj} masters × ${hrsPerMaster}h each. Only after division go-live.`},
+                  {color:"#22C55E",dot:"A2",label:"QC Review",desc:`Auto assets × ${qcMinsPerAsset} min/asset ÷ 60. Only after division go-live. = ${autoQCRate} assets/day.`},
+                  {color:"#F97316",dot:"B",label:"Manual Production",desc:`All non-auto assets ÷ ${manualRate}/day × 8h. Pre-go-live all assets count as manual.`},
                 ].map(s=>(
                   <div key={s.label} className="flex items-start gap-3 p-4 bg-white rounded-2xl border border-gray-100 shadow-sm">
                     <div className="w-7 h-7 rounded-lg flex items-center justify-center text-white text-xs font-bold flex-shrink-0" style={{background:s.color}}>{s.dot}</div>
@@ -628,8 +608,8 @@ export default function App(){
               </div>
               <Card className="mb-4">
                 <CardDescriptor title="Designer hours — demand vs supply chart"
-                  description="Stacked bars show hours demanded from the Volume tab project mix, seasonally distributed. Dashed line = total available supply. When bars exceed the line, designers are over capacity."
-                  howToRead="Purple = master setup · Green = QC review · Orange = manual production. Pre-go-live months (Jan–Mar with default config) show all demand as orange. Post-go-live, demand shifts to purple+green."
+                  description="Stacked bars = total hours demanded from the forecast asset volume, split by work type. Dashed line = available supply. Bars above the line = over capacity."
+                  howToRead="Purple = master setup · Green = QC · Orange = manual. Jan–Mar: all orange (pre-go-live). Apr+: purple and green appear as automation activates."
                   accent="#8B5CF6"/>
                 <ResponsiveContainer width="100%" height={250}>
                   <ComposedChart data={designerChartData} margin={{top:0,right:10,left:0,bottom:0}}>
@@ -649,20 +629,30 @@ export default function App(){
                 <div className="px-6 pt-5 pb-2">
                   <CardDescriptor title="Designer hours — monthly detail"
                     description="Exact hours per stream per month. Util % = total demand ÷ available supply."
-                    howToRead="Green ≤85% = comfortable. Amber ≤100% = near limit. Red >100% = over capacity — row shows how many additional designers are needed."
+                    howToRead="Green ≤85% = comfortable. Amber ≤100% = near limit. Red >100% = over capacity."
                     accent="#8B5CF6"/>
                 </div>
                 <div className="px-6 pb-4">
-                  <div className="grid gap-2 text-xs font-medium text-gray-400 uppercase tracking-wide mb-3" style={{gridTemplateColumns:"3rem 1fr 1fr 1fr 1fr 1fr 1fr 3.5rem"}}>
-                    <span>Month</span><span className="text-right" style={{color:"#6366F1"}}>Auto proj</span><span className="text-right" style={{color:"#6366F1"}}>Master h</span><span className="text-right" style={{color:"#22C55E"}}>QC h</span><span className="text-right" style={{color:"#F97316"}}>Manual h</span><span className="text-right">Demand</span><span className="text-right text-gray-400">Supply</span><span className="text-right">Util</span>
+                  <div className="grid gap-2 text-xs font-medium text-gray-400 uppercase tracking-wide mb-3" style={{gridTemplateColumns:"3rem 1fr 1fr 1fr 1fr 1fr 1fr 1fr 3.5rem"}}>
+                    <span>Month</span>
+                    <span className="text-right">FM assets</span>
+                    <span className="text-right" style={{color:"#6366F1"}}>Auto proj</span>
+                    <span className="text-right" style={{color:"#6366F1"}}>Master h</span>
+                    <span className="text-right" style={{color:"#22C55E"}}>QC h</span>
+                    <span className="text-right" style={{color:"#F97316"}}>Manual h</span>
+                    <span className="text-right">Demand</span>
+                    <span className="text-right text-gray-400">Supply</span>
+                    <span className="text-right">Util</span>
                   </div>
                   <div className="divide-y divide-gray-50 -mx-6 px-6">
-                    {designerWorkload.map(row=>{
+                    {designerWorkload.map((row,i)=>{
+                      const fm=FM[i];
                       const rg=ragU(row.utilPct);
                       return(
                         <div key={row.month} className={`py-3 hover:bg-gray-50 -mx-6 px-6 transition-colors ${row.gapHrs<0?"bg-red-50/30":""}`}>
-                          <div className="grid gap-2 items-center text-sm" style={{gridTemplateColumns:"3rem 1fr 1fr 1fr 1fr 1fr 1fr 3.5rem"}}>
+                          <div className="grid gap-2 items-center text-sm" style={{gridTemplateColumns:"3rem 1fr 1fr 1fr 1fr 1fr 1fr 1fr 3.5rem"}}>
                             <span className="font-medium text-gray-900">{row.month}{row.anyAuto&&<span className="ml-0.5 text-green-400">⚡</span>}</span>
+                            <span className="text-right text-gray-500">{fm.gt.toLocaleString()}</span>
                             <span className="text-right text-indigo-600 font-medium">{row.autoProj.toLocaleString()}</span>
                             <span className="text-right font-semibold text-indigo-700">{row.masterSetupHrs.toLocaleString()}h</span>
                             <span className="text-right font-semibold text-green-700">{row.qcHrs.toLocaleString()}h</span>
@@ -684,7 +674,11 @@ export default function App(){
                   </div>
                 </div>
                 <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl">
-                  <p className="text-xs text-gray-400"><span className="font-medium text-gray-600">Source:</span> Volume tab project mix · annual-scaled using {period.label} period (×{(12/period.months).toFixed(0)}) · distributed by Oliver forecast monthly weights<br/><span className="font-medium text-gray-600">Formula:</span> Master h = auto proj × {mastersPerProj} × {hrsPerMaster}h (post go-live) · QC h = auto assets × {qcMinsPerAsset}min ÷ 60 (post go-live) · Manual h = all other assets ÷ {manualRate}/day × 8h · Supply = {globalHC.des.total} des × 21d × 8h × {utilDes}% = {desSupplyHrsPerMonth.toLocaleString()}h/mo</p>
+                  <p className="text-xs text-gray-400">
+                    <span className="font-medium text-gray-600">Volume source:</span> FM forecast assets (fm.ldb+fm.ppd+fm.lld) — the ground truth for total monthly demand<br/>
+                    <span className="font-medium text-gray-600">Auto/manual split:</span> Volume tab auto-eligible flag determines ratio per division<br/>
+                    <span className="font-medium text-gray-600">Formulas:</span> Master h = auto proj × {mastersPerProj} × {hrsPerMaster}h · QC h = auto assets × {qcMinsPerAsset}min ÷ 60 · Manual h = manual assets ÷ {manualRate}/day × 8h · Supply = {globalHC.des.total} × 21d × 8h × {utilDes}% = {desSupplyHrsPerMonth.toLocaleString()}h/mo
+                  </p>
                 </div>
               </Card>
             </div>
@@ -726,9 +720,8 @@ export default function App(){
             </div>
             <div>
               <SectionHeader number="C" title="Coverage by Division" subtitle="Within each division, how does monthly asset capacity compare to L'Oréal's targets?"
-                what="Coverage % = capacity ÷ target. ≥100% = green. 75–99% = amber. <75% = red. ⚡ marks months where automation is active for that division."
-                insight={{label:"LLD manual-only",text:"Jun and Jul at ~71–75% correctly show red/amber — this is the gap that makes LLD's April go-live critical."}}
-                color="#6366F1"/>
+                what="Coverage % = capacity ÷ target. ≥100% = green. 75–99% = amber. <75% = red."
+                insight={{label:"LLD manual-only",text:"Jun and Jul at ~71–75% correctly show red/amber — this is the gap that makes LLD's April go-live critical."}} color="#6366F1"/>
               <div className="grid grid-cols-3 gap-4">
                 {[{div:"LDB",capKey:"capacityLdb"},{div:"PPD",capKey:"capacityPpd"},{div:"LLD",capKey:"capacityLld"}].map(({div,capKey})=>(
                   <Card key={div} padding="p-0">
@@ -738,16 +731,7 @@ export default function App(){
                         const target=row[div.toLowerCase()],cap=row[capKey],pct=Math.round((cap/target)*100);
                         const isAuto=div==="LLD"?row.lldAuto:div==="LDB"?row.ldbAuto:row.ppdAuto;
                         const rg=ragCov(pct);
-                        return(
-                          <div key={row.month}>
-                            <div className="flex items-center justify-between text-xs mb-1">
-                              <span className="font-medium text-gray-700 flex items-center gap-1">{row.month}{isAuto&&autoScenario==="with"&&<span className="text-green-400">⚡</span>}</span>
-                              <span className="text-gray-400">{target.toLocaleString()}</span>
-                              <span className="font-semibold" style={{color:rg.text}}>{pct}%</span>
-                            </div>
-                            <div className="w-full h-1.5 rounded-full bg-gray-100"><div className="h-1.5 rounded-full" style={{width:`${Math.min(pct,100)}%`,background:rg.color}}/></div>
-                          </div>
-                        );
+                        return(<div key={row.month}><div className="flex items-center justify-between text-xs mb-1"><span className="font-medium text-gray-700 flex items-center gap-1">{row.month}{isAuto&&autoScenario==="with"&&<span className="text-green-400">⚡</span>}</span><span className="text-gray-400">{target.toLocaleString()}</span><span className="font-semibold" style={{color:rg.text}}>{pct}%</span></div><div className="w-full h-1.5 rounded-full bg-gray-100"><div className="h-1.5 rounded-full" style={{width:`${Math.min(pct,100)}%`,background:rg.color}}/></div></div>);
                       })}
                     </div>
                   </Card>
@@ -755,7 +739,9 @@ export default function App(){
               </div>
             </div>
             <div>
-              <SectionHeader number="D" title="Month-by-Month Actuals Tracker" subtitle="How are we performing against forecast? Enter real delivery numbers as each month closes." what="Amber cells are editable. % shows actual as a proportion of L'Oréal's target." insight={{label:"Action required",text:"Update at the start of each month. Evidence base for QBR and governance conversations."}} color="#F59E0B"/>
+              <SectionHeader number="D" title="Month-by-Month Actuals Tracker" subtitle="How are we performing against forecast? Enter real delivery numbers as each month closes."
+                what="Amber cells are editable. % shows actual as a proportion of L'Oréal's target."
+                insight={{label:"Action required",text:"Update at the start of each month. Evidence base for QBR and governance conversations."}} color="#F59E0B"/>
               <Card padding="p-0">
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs" style={{tableLayout:"fixed"}}>
@@ -803,7 +789,7 @@ export default function App(){
         {activeTab==="automation"&&(
           <div className="space-y-8">
             <div>
-              <SectionHeader number="A" title="Automation Phases — Capacity by Period" subtitle="Automation goes live in phases — LLD April, then LDB and PPD June." what="Compare the three numbers to understand the capacity step-change automation creates." color="#22C55E"/>
+              <SectionHeader number="A" title="Automation Phases — Capacity by Period" subtitle="LLD goes live April, LDB and PPD in June." what="Compare the three numbers to understand the capacity step-change automation creates." color="#22C55E"/>
               <div className="flex items-center gap-3 mb-5">
                 <span className="text-sm text-gray-500">Automation</span>
                 <button onClick={()=>setAutoEnabled(v=>!v)} className="relative inline-flex h-7 w-12 items-center rounded-full transition-colors" style={{background:autoEnabled?"#22C55E":"#E5E7EB"}}><span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform ${autoEnabled?"translate-x-6":"translate-x-1"}`}/></button>
@@ -831,7 +817,7 @@ export default function App(){
               </div>
             </div>
             <div>
-              <SectionHeader number="D" title="Project Type Eligibility" subtitle="Which brief types go through automation, and which are authored manually?" what="Auto-eligible types use the QC rate once go-live is active. Manual types always use the manual rate. Toggling eligibility here immediately updates the designer hours model on the Capacity tab." color="#10B981"/>
+              <SectionHeader number="D" title="Project Type Eligibility" subtitle="Which brief types go through automation, and which are authored manually?" what="Auto-eligible types use the QC rate once go-live is active. Toggling eligibility here updates the auto/manual split ratio used in the designer hours model." color="#10B981"/>
               <Card>
                 <div className="grid grid-cols-3 gap-3">
                   {mix.map(m=>{const pt=PT_BASE.find(p=>p.id===m.id);if(!pt)return null;return(<div key={m.id} className="flex items-center justify-between p-3.5 rounded-xl border transition-all" style={m.autoEligible?{background:"#F0FDF4",borderColor:"#BBF7D0"}:{background:"#F9FAFB",borderColor:"#E5E7EB"}}><div className="flex items-center gap-2.5 flex-1 min-w-0"><div className="w-2 h-2 rounded-full flex-shrink-0" style={{background:pt.color}}/><span className="text-xs font-medium text-gray-800 truncate">{pt.label}</span></div><div className="flex items-center gap-2 ml-2 flex-shrink-0"><span className={`text-xs font-medium ${m.autoEligible?"text-green-700":"text-gray-400"}`}>{m.autoEligible?"Auto":"Manual"}</span><button onClick={()=>toggleAuto(m.id)} className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors" style={{background:m.autoEligible?"#22C55E":"#D1D5DB"}}><span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform ${m.autoEligible?"translate-x-4":"translate-x-0.5"}`}/></button></div></div>);})}
@@ -863,16 +849,15 @@ export default function App(){
           <div className="space-y-8">
             <div>
               <SectionHeader number="A" title="Project Intake by Type & Division" subtitle="What is the expected mix of project types, and how many assets does each brief contain?"
-                what="This table is the single source of truth for the designer hours model on the Capacity tab. Auto-eligible types feed master setup + QC hours (after go-live). Non-auto types feed manual production hours always."
-                insight={{label:"Source of truth",text:"Changes here immediately update the designer hours model. Keep assets/brief calibrated against real historical brief data for accurate capacity modelling."}}
-                color="#6366F1"/>
+                what="The auto-eligible flag on each row controls the auto/manual split ratio used in the designer hours model on the Capacity tab. The FM forecast provides the total asset volume — the Volume tab determines the proportion that goes through automation."
+                insight={{label:"What this drives",text:"Toggling a project type between Auto and Manual changes the ratio of QC hours vs manual production hours on the Capacity tab. The total hours demanded stays aligned to the FM forecast volume."}} color="#6366F1"/>
               <div className="grid grid-cols-3 gap-4 mb-6">
                 {DIVS.map(div=>{const da=mixAnalysis.find(x=>x.div===div)||{tProj:0,tAssets:0};return(<Card key={div}><div className="flex items-center gap-2 mb-2"><div className="w-2.5 h-2.5 rounded-full" style={{background:DC[div]}}/><span className="text-sm font-semibold text-gray-900">{div}</span></div><p className="text-3xl font-bold text-gray-900">{da.tProj}</p><p className="text-sm text-gray-400 mt-1">projects · <span className="font-medium text-gray-600">{da.tAssets.toLocaleString()} total assets</span></p></Card>);})}
               </div>
               <Card padding="p-0">
                 <div className="px-6 pt-5 pb-4 border-b border-gray-50">
                   <p className="text-sm font-semibold text-gray-900">How to use this table</p>
-                  <p className="text-xs text-gray-400 mt-1">Use + / − to adjust project counts. Type into the assets/brief field to set average volume per brief. ⚡ green rows are automation-eligible — their assets use the QC rate rather than the manual production rate on the Capacity tab.</p>
+                  <p className="text-xs text-gray-400 mt-1">Use + / − to adjust project counts. Type into assets/brief to set average volume. ⚡ green rows are automation-eligible — the auto/manual ratio for the Capacity tab is derived from the proportion of total assets in ⚡ rows vs non-⚡ rows per division.</p>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
@@ -949,9 +934,7 @@ export default function App(){
                               <span className="text-xs text-gray-400">days</span>
                               {isOv&&<button onClick={()=>setOv(calcType,sm.key,defVal)} className="text-xs text-amber-500">↩</button>}
                             </div>
-                          ):(
-                            <span className="text-xs text-gray-300 bg-gray-50 rounded-lg px-3 py-1.5 flex-shrink-0">Not required</span>
-                          )}
+                          ):<span className="text-xs text-gray-300 bg-gray-50 rounded-lg px-3 py-1.5 flex-shrink-0">Not required</span>}
                         </div>
                       );})}
                     </div>
@@ -972,8 +955,7 @@ export default function App(){
           <div className="space-y-6">
             <SectionHeader number="" title="Live Team Roster" subtitle="The single source of truth for who is on the team, what division they're in, and when they're available."
               what="Every PM and Integrated Designer listed here contributes to the capacity calculations. Set start dates for joiners and exit dates for leavers — capacity is pro-rated automatically."
-              insight={{label:"Keep current",text:"All capacity numbers derive from this roster. Out-of-date headcount = inaccurate model = unreliable governance conversations."}}
-              color="#1D1D1F"/>
+              insight={{label:"Keep current",text:"All capacity numbers derive from this roster. Out-of-date headcount = inaccurate model = unreliable governance conversations."}} color="#1D1D1F"/>
             {pendingStarters.length>0&&(<div className="p-5 rounded-2xl border border-amber-200 bg-amber-50"><p className="text-sm font-semibold text-amber-800 mb-1">⏳ {pendingStarters.length} Pending Starter{pendingStarters.length>1?"s":""}</p><p className="text-xs text-amber-600 mb-3">Not yet active — capacity is pro-rated from their start date.</p><div className="space-y-2">{pendingStarters.map(p=>{const f=availFrac(p.startDate,p.endDate,WD);return(<div key={p.id} className="flex items-center gap-3 text-sm"><span className="font-medium text-amber-900">{p.name}</span><Badge color="gray" size="xs">{p.division} · {p.role}</Badge><span className="text-amber-600 text-xs">Starts {startLbl(p.startDate)}</span><span className="ml-auto text-xs font-semibold text-green-600">{Math.round(f*100)}% this period</span></div>);})}</div></div>)}
             {pendingLeavers.length>0&&(<div className="p-5 rounded-2xl border border-red-200 bg-red-50"><p className="text-sm font-semibold text-red-800 mb-1">🔴 {pendingLeavers.length} Planned Leaver{pendingLeavers.length>1?"s":""}</p><p className="text-xs text-red-600 mb-3">Exit dates set — the capacity model already accounts for this reduction.</p><div className="space-y-2">{pendingLeavers.map(p=>{const f=availFrac(p.startDate,p.endDate,WD);return(<div key={p.id} className="flex items-center gap-3 text-sm"><span className="font-medium text-red-900">{p.name}</span><Badge color="gray" size="xs">{p.division} · {p.role}</Badge><span className="text-red-600 text-xs">Exits {endLbl(p.endDate)}</span><span className="ml-auto text-xs font-semibold text-amber-600">{Math.round(f*100)}% remaining</span></div>);})}</div></div>)}
             <div className="grid grid-cols-4 gap-4">
@@ -1045,18 +1027,17 @@ export default function App(){
             </div>
             <Insight type="tip">All changes take effect immediately across every tab. The model recalculates live as you adjust any value.</Insight>
             <Card>
-              <div className="pb-5 mb-5 border-b border-gray-50"><p className="text-base font-bold text-gray-900">Planning Period</p><p className="text-sm text-gray-400 mt-0.5">The time window used for all capacity calculations. The designer hours model automatically scales Volume tab project counts to annual totals and redistributes them monthly.</p></div>
+              <div className="pb-5 mb-5 border-b border-gray-50"><p className="text-base font-bold text-gray-900">Planning Period</p><p className="text-sm text-gray-400 mt-0.5">The time window used for all capacity calculations.</p></div>
               <div className="grid grid-cols-4 gap-3">{PERIODS.map((p,i)=>(<button key={p.label} onClick={()=>{setPeriodIdx(i);saveSettings({periodIdx:i});}} className="p-4 rounded-2xl border-2 text-left transition-all" style={periodIdx===i?{borderColor:"#1D1D1F",background:"#1D1D1F",color:"white"}:{borderColor:"#E5E7EB",background:"white",color:"#374151"}}><p className="text-base font-bold">{p.label}</p><p className="text-xs mt-1 opacity-60">{p.workingDays} working days</p></button>))}</div>
             </Card>
             <Card>
               <div className="pb-5 mb-2 border-b border-gray-50"><p className="text-base font-bold text-gray-900">Utilisation</p><p className="text-sm text-gray-400 mt-0.5">What percentage of a person's working hours are genuinely productive — after accounting for stand-ups, admin and non-project time.</p></div>
-              <SettingRow label="PM Utilisation" description="Productive time for Project Managers as a % of contracted hours. Industry benchmark: 75–85% for active delivery roles." value={utilPM} min={60} max={95} onChange={v=>{setUtilPM(v);saveSettings({utilPM:v});}} display={`${utilPM}%`} accent="#3B82F6" derived={`${availHrsPM}h productive hours/week · ${totalTeamPMCap.toLocaleString()} team projects/month`}/>
+              <SettingRow label="PM Utilisation" description="Productive time for Project Managers as a % of contracted hours. Industry benchmark: 75–85%." value={utilPM} min={60} max={95} onChange={v=>{setUtilPM(v);saveSettings({utilPM:v});}} display={`${utilPM}%`} accent="#3B82F6" derived={`${availHrsPM}h productive hours/week · ${totalTeamPMCap.toLocaleString()} team projects/month`}/>
               <SettingRow label="Designer Utilisation" description="Productive time for Integrated Designers as a % of contracted hours." value={utilDes} min={60} max={95} onChange={v=>{setUtilDes(v);saveSettings({utilDes:v});}} display={`${utilDes}%`} accent="#8B5CF6" derived={`${desSupplyHrsPerMonth.toLocaleString()}h designer supply/month`}/>
             </Card>
             <Card>
               <div className="pb-5 mb-2 border-b border-gray-50">
                 <p className="text-base font-bold text-gray-900">PM Capacity Model</p>
-                <p className="text-sm text-gray-400 mt-0.5">Concurrent projects per PM is derived — not assumed. Set both inputs and the tool calculates the output.</p>
                 <div className="mt-3 p-3 bg-blue-50 rounded-xl inline-flex items-center gap-3 flex-wrap">
                   <span className="text-sm text-blue-600">Formula:</span>
                   <span className="text-sm font-semibold text-blue-900">{pmHoursPerWeek}h × {utilPM}% = {availHrsPM}h productive</span>
@@ -1066,22 +1047,22 @@ export default function App(){
                   <span className="text-lg font-bold text-blue-700">{projectsPerPM} concurrent</span>
                 </div>
               </div>
-              <SettingRow label="Working hours per week" description="Total contracted hours per week. Standard full-time is 40h." value={pmHoursPerWeek} min={35} max={45} step={0.5} onChange={v=>{setPmHoursPerWeek(v);saveSettings({pmHoursPerWeek:v});}} display={`${pmHoursPerWeek}h`} accent="#3B82F6"/>
-              <SettingRow label="Hours per project per week" description="Average time a PM spends managing one active project per week across its lifecycle. Range: 1.5h (high-volume simple) to 4h (complex). Default 2.5h is appropriate for eComm asset projects." value={hoursPerProject} min={0.5} max={8} step={0.5} onChange={v=>{setHoursPerProject(v);saveSettings({hoursPerProject:v});}} display={`${hoursPerProject}h`} accent="#3B82F6" derived={`${projectsPerPM} concurrent projects/PM · ${totalTeamPMCap.toLocaleString()} total team capacity/month`}/>
+              <SettingRow label="Working hours per week" description="Total contracted hours per week." value={pmHoursPerWeek} min={35} max={45} step={0.5} onChange={v=>{setPmHoursPerWeek(v);saveSettings({pmHoursPerWeek:v});}} display={`${pmHoursPerWeek}h`} accent="#3B82F6"/>
+              <SettingRow label="Hours per project per week" description="Average time a PM spends managing one active project per week. Range: 1.5h (high-volume simple) to 4h (complex). Default 2.5h for eComm asset projects." value={hoursPerProject} min={0.5} max={8} step={0.5} onChange={v=>{setHoursPerProject(v);saveSettings({hoursPerProject:v});}} display={`${hoursPerProject}h`} accent="#3B82F6" derived={`${projectsPerPM} concurrent projects/PM · ${totalTeamPMCap.toLocaleString()} total team capacity/month`}/>
             </Card>
             <Card>
-              <div className="pb-5 mb-2 border-b border-gray-50"><p className="text-base font-bold text-gray-900">Designer Throughput</p><p className="text-sm text-gray-400 mt-0.5">Controls how quickly designers produce assets across both work streams — manual authoring and automated QC — plus the cost of building master templates before automation runs.</p></div>
-              <SettingRow label="Manual production rate" description="Assets a designer can fully author per day for non-auto project types — Complex, Creation and Bespoke." value={manualRate} min={10} max={50} onChange={v=>{setManualRate(v);saveSettings({manualRate:v});}} display={`${manualRate} assets/day`} accent="#F97316" derived={`Manual-only capacity: ${manualCap.toLocaleString()} assets/month`}/>
-              <SettingRow label="QC time per automated asset" description="Minutes to review each automation-generated asset on canvas — checking crop, copy, brand compliance and applying cascade fixes." value={qcMinsPerAsset} min={0.5} max={10} step={0.5} onChange={v=>{setQcMinsPerAsset(v);saveSettings({qcMinsPerAsset:v});}} display={`${qcMinsPerAsset} min/asset`} accent="#8B5CF6" derived={`${autoQCRate} assets/day · ${(autoQCRate/manualRate).toFixed(1)}× faster than manual`}/>
-              <SettingRow label="Masters per automation project" description="How many format master templates are built before automation runs (e.g. horizontal, vertical and square = 3)." value={mastersPerProj} min={1} max={6} step={1} onChange={v=>{setMastersPerProj(v);saveSettings({mastersPerProj:v});}} display={`${mastersPerProj} masters`} accent="#8B5CF6"/>
-              <SettingRow label="Hours to build one master" description="Time to design and finalise one format master template including layout, copy zones, brand review and sign-off." value={hrsPerMaster} min={1} max={8} step={0.5} onChange={v=>{setHrsPerMaster(v);saveSettings({hrsPerMaster:v});}} display={`${hrsPerMaster}h`} accent="#8B5CF6" derived={`${totalMasterHrs}h designer setup per automation project (${mastersPerProj} × ${hrsPerMaster}h)`}/>
+              <div className="pb-5 mb-2 border-b border-gray-50"><p className="text-base font-bold text-gray-900">Designer Throughput</p><p className="text-sm text-gray-400 mt-0.5">Controls speed of manual authoring, automated QC review, and master template setup cost.</p></div>
+              <SettingRow label="Manual production rate" description="Assets a designer can fully author per day for Complex, Creation and Bespoke project types." value={manualRate} min={10} max={50} onChange={v=>{setManualRate(v);saveSettings({manualRate:v});}} display={`${manualRate} assets/day`} accent="#F97316" derived={`Manual-only capacity: ${manualCap.toLocaleString()} assets/month`}/>
+              <SettingRow label="QC time per automated asset" description="Minutes to review each auto-generated asset on canvas — crop, copy, brand compliance, cascade fixes." value={qcMinsPerAsset} min={0.5} max={10} step={0.5} onChange={v=>{setQcMinsPerAsset(v);saveSettings({qcMinsPerAsset:v});}} display={`${qcMinsPerAsset} min/asset`} accent="#8B5CF6" derived={`${autoQCRate} assets/day · ${(autoQCRate/manualRate).toFixed(1)}× faster than manual`}/>
+              <SettingRow label="Masters per automation project" description="Format master templates built before automation runs (e.g. H, V, Square = 3)." value={mastersPerProj} min={1} max={6} step={1} onChange={v=>{setMastersPerProj(v);saveSettings({mastersPerProj:v});}} display={`${mastersPerProj} masters`} accent="#8B5CF6"/>
+              <SettingRow label="Hours to build one master" description="Time to design and finalise one format master including layout, copy zones, brand review and sign-off." value={hrsPerMaster} min={1} max={8} step={0.5} onChange={v=>{setHrsPerMaster(v);saveSettings({hrsPerMaster:v});}} display={`${hrsPerMaster}h`} accent="#8B5CF6" derived={`${totalMasterHrs}h designer setup per automation project (${mastersPerProj} × ${hrsPerMaster}h)`}/>
             </Card>
             <Card>
-              <div className="pb-5 mb-5 border-b border-gray-50"><p className="text-base font-bold text-gray-900">SLA Calculator Defaults</p><p className="text-sm text-gray-400 mt-0.5">Assumptions used in the SLA Calc tab. Can be overridden per project type on that tab.</p></div>
+              <div className="pb-5 mb-5 border-b border-gray-50"><p className="text-base font-bold text-gray-900">SLA Calculator Defaults</p></div>
               <div className="grid grid-cols-3 gap-6">
                 <div><p className="text-sm font-semibold text-gray-800 mb-1">Client Feedback Rounds</p><p className="text-xs text-gray-400 mb-3">Realistic includes revision rounds. Best Case assumes first-pass approval.</p><div className="flex gap-2 p-1 bg-gray-100 rounded-xl">{[{l:"Realistic",v:true},{l:"Best Case",v:false}].map(o=>(<button key={String(o.v)} onClick={()=>{setClientDays(o.v);saveSettings({clientDays:o.v});}} className="flex-1 py-2 rounded-lg text-sm font-semibold transition-all" style={clientDays===o.v?{background:"white",color:"#1D1D1F",boxShadow:"0 1px 3px rgba(0,0,0,0.1)"}:{color:"#6B7280"}}>{o.l}</button>))}</div></div>
-                <div><p className="text-sm font-semibold text-gray-800 mb-1">EAN Band</p><p className="text-xs text-gray-400 mb-3">EAN codes in scope for syndication. Drives the Syndication stage duration.</p><div className="flex gap-2">{["1-5 EANs","5-10 EANs","10-15 EANs"].map(b=>(<button key={b} onClick={()=>{setEanBand(b);saveSettings({eanBand:b});}} className="flex-1 py-2 rounded-xl text-xs font-semibold border-2 transition-all" style={eanBand===b?{borderColor:"#0F172A",background:"#0F172A",color:"white"}:{borderColor:"#E5E7EB",color:"#6B7280"}}>{b.replace(" EANs","")}</button>))}</div></div>
-                <div><p className="text-sm font-semibold text-gray-800 mb-1">Syndication Complexity</p><p className="text-xs text-gray-400 mb-3">Complexity of Salsify enrichment. Simple = standard fields.</p><div className="flex gap-2">{["Simple","Mid","Complex"].map(c=>(<button key={c} onClick={()=>{setSyndCplx(c);saveSettings({syndCplx:c});}} className="flex-1 py-2 rounded-xl text-xs font-semibold border-2 transition-all" style={syndCplx===c?{borderColor:"#0F172A",background:"#0F172A",color:"white"}:{borderColor:"#E5E7EB",color:"#6B7280"}}>{c}</button>))}</div></div>
+                <div><p className="text-sm font-semibold text-gray-800 mb-1">EAN Band</p><p className="text-xs text-gray-400 mb-3">EAN codes for syndication. Drives the Syndication stage duration.</p><div className="flex gap-2">{["1-5 EANs","5-10 EANs","10-15 EANs"].map(b=>(<button key={b} onClick={()=>{setEanBand(b);saveSettings({eanBand:b});}} className="flex-1 py-2 rounded-xl text-xs font-semibold border-2 transition-all" style={eanBand===b?{borderColor:"#0F172A",background:"#0F172A",color:"white"}:{borderColor:"#E5E7EB",color:"#6B7280"}}>{b.replace(" EANs","")}</button>))}</div></div>
+                <div><p className="text-sm font-semibold text-gray-800 mb-1">Syndication Complexity</p><p className="text-xs text-gray-400 mb-3">Simple = standard fields. Complex = multi-attribute, multi-market.</p><div className="flex gap-2">{["Simple","Mid","Complex"].map(c=>(<button key={c} onClick={()=>{setSyndCplx(c);saveSettings({syndCplx:c});}} className="flex-1 py-2 rounded-xl text-xs font-semibold border-2 transition-all" style={syndCplx===c?{borderColor:"#0F172A",background:"#0F172A",color:"white"}:{borderColor:"#E5E7EB",color:"#6B7280"}}>{c}</button>))}</div></div>
               </div>
             </Card>
             <Card>
@@ -1089,21 +1070,21 @@ export default function App(){
               <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-3">
                   <p className="text-sm font-semibold text-gray-700">Forecast Source</p>
-                  <p className="text-xs text-gray-500 leading-relaxed">Oliver Forecast 2026 & Capacity Plan · GRAND TOTAL LLD 50% March tab · Weekly figures aggregated to monthly using actual week-start counts.</p>
+                  <p className="text-xs text-gray-500 leading-relaxed">Oliver Forecast 2026 & Capacity Plan · GRAND TOTAL LLD 50% March tab.</p>
                   {[{label:"Jan",w:4,wf:162,mf:648},{label:"Mar",w:5,wf:272,mf:1360},{label:"Jun",w:5,wf:588,mf:2940}].map(r=>(<div key={r.label} className="flex items-center gap-2 text-xs"><span className="font-semibold text-gray-600 w-6">{r.label}</span><span className="text-gray-400">{r.w} weeks × {r.wf}/wk =</span><span className="font-semibold text-gray-700">{r.mf.toLocaleString()} projects</span></div>))}
                 </div>
                 <div className="space-y-2">
                   <p className="text-sm font-semibold text-gray-700">Key Formulas</p>
                   {[
-                    {label:"Monthly forecast",formula:"Oliver weekly × weeks in month"},
-                    {label:"Concurrent proj/PM",formula:`floor(${pmHoursPerWeek}h × ${utilPM}% ÷ ${hoursPerProject}h) = ${projectsPerPM}`},
+                    {label:"Asset volume",formula:"FM forecast fm.ldb + fm.ppd + fm.lld (ground truth)"},
+                    {label:"Auto ratio/div",formula:"Volume tab: auto-eligible assets ÷ total assets per division"},
+                    {label:"Auto assets",formula:"fm.div × auto ratio × (division go-live active?)"},
+                    {label:"Master setup",formula:"auto proj × mastersPerProj × hrsPerMaster (post go-live)"},
+                    {label:"QC hours",formula:"auto assets × qcMinsPerAsset ÷ 60 (post go-live)"},
+                    {label:"Manual hours",formula:"(fm.gt − auto assets) ÷ manualRate × 8h"},
                     {label:"Designer supply",formula:`${globalHC.des.total} × 21d × 8h × ${utilDes}% = ${desSupplyHrsPerMonth.toLocaleString()}h/mo`},
-                    {label:"Annual scale factor",formula:`12 ÷ ${period.months} months = ×${(12/period.months).toFixed(0)} on Volume tab totals`},
-                    {label:"Master setup",formula:`auto proj × ${mastersPerProj} × ${hrsPerMaster}h (post go-live only)`},
-                    {label:"QC hours",formula:`auto assets × ${qcMinsPerAsset}min ÷ 60 (post go-live only)`},
-                    {label:"Manual hours",formula:`all other assets ÷ ${manualRate}/day × 8h`},
                     {label:"Coverage RAG",formula:"≥100% green · ≥75% amber · <75% red"},
-                  ].map(f=>(<div key={f.label} className="flex items-start gap-2 text-xs"><span className="font-semibold text-gray-600 w-36 flex-shrink-0">{f.label}</span><span className="text-gray-400">{f.formula}</span></div>))}
+                  ].map(f=>(<div key={f.label} className="flex items-start gap-2 text-xs"><span className="font-semibold text-gray-600 w-28 flex-shrink-0">{f.label}</span><span className="text-gray-400">{f.formula}</span></div>))}
                 </div>
               </div>
               <div className="mt-5 pt-5 border-t border-gray-50 flex items-center gap-3">
@@ -1119,7 +1100,7 @@ export default function App(){
       </div>
 
       <div className="max-w-7xl mx-auto px-6 py-6 flex items-center justify-between border-t border-gray-100">
-        <p className="text-xs text-gray-300">L'Oréal eCommerce Programme · Capacity Planning Tool v18.5.1</p>
+        <p className="text-xs text-gray-300">L'Oréal eCommerce Programme · Capacity Planning Tool v18.6</p>
         <p className="text-xs text-gray-300">{globalHC.des.total} designers · {manualRate}/day manual · {autoQCRate}/day QC · {projectsPerPM} proj/PM · {dbStatus==="connected"?"🟢 Supabase":"⚪ Offline"}</p>
       </div>
     </div>
