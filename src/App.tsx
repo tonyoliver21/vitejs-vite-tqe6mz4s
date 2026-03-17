@@ -374,8 +374,8 @@ export default function App(){
   const fteDes=capacityRoster.filter(p=>p.role==="Integrated Designer"&&p.type==="FTE").length;
   const flDes=capacityRoster.filter(p=>p.role==="Integrated Designer"&&p.type==="Freelance").length;
 
-  const desSupplyHrsPerMonth=Math.round(totalDesEfte*WORKING_DAYS_PER_MONTH*HOURS_PER_DAY*(utilDes/100));
-  const manualCap=Math.round(totalDesEfte*WORKING_DAYS_PER_MONTH*(utilDes/100)*manualRate);
+  const desSupplyHrsPerMonth=useMemo(()=>Math.round(totalDesEfte*WORKING_DAYS_PER_MONTH*HOURS_PER_DAY*(utilDes/100)),[totalDesEfte,utilDes]);
+  const manualCap=useMemo(()=>Math.round(totalDesEfte*WORKING_DAYS_PER_MONTH*(utilDes/100)*manualRate),[totalDesEfte,utilDes,manualRate]);
   const totalTeamPMCap=Math.round(totalPMEfte*projectsPerPM*(utilPM/100));
 
   const getDivCap=useCallback((div,month,withAuto)=>{
