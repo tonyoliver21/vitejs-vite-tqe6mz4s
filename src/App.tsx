@@ -42,7 +42,10 @@ function calcDesignerRow(fm,autoOn,cfg,mRate,qcMins,mPerProj,hPerMaster,supplyHr
   const ppdAutoProj=ppdLive?Math.round(fm.ppdProj*cfg.PPD.simplePct):0;
   const totalAutoProj=lldAutoProj+ldbAutoProj+ppdAutoProj;
   const masterH=Math.round(totalAutoProj*mPerProj*hPerMaster);
-  const qcH=Math.round(totalAuto*qcMins/60);
+  const autoQcH=Math.round(totalAuto*qcMins/60);
+  const manualQCMins=(HOURS_PER_DAY*60/mRate)*0.10;
+  const manualQcH=Math.round(totalManual*manualQCMins/60);
+  const qcH=autoQcH+manualQcH;
   const manualH=Math.round((totalManual/mRate)*HOURS_PER_DAY);
   const demand=masterH+qcH+manualH;
   const util=supplyHrs>0?Math.round((demand/supplyHrs)*100):0;
